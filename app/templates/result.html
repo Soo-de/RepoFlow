@@ -1,1 +1,21 @@
-<!-- result: final YAML output + validation display -->
+{% extends "base.html" %}
+
+{% block title %}RepoFlow — Pipeline Result{% endblock %}
+
+{% block content %}
+<section class="result-container">
+    <h1>Generated Pipeline</h1>
+
+    <div class="result-card">
+        <div class="result-header">
+            <span class="badge badge-complete">Complete</span>
+            <button class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('yaml-output').textContent)">
+                Copy YAML
+            </button>
+        </div>
+        <pre><code id="yaml-output">{{ yaml_output }}</code></pre>
+    </div>
+
+    <a href="/" class="btn-secondary">Generate Another</a>
+</section>
+{% endblock %}
