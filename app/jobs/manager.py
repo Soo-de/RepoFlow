@@ -1,11 +1,3 @@
-"""
-Async job runner — thin wrapper that connects the pipeline facade to the job store.
-
-Called via asyncio.create_task() from routes/generate.py.
-Delegates all real work to core/pipeline.execute() and translates
-progress callbacks into store updates for HTMX polling.
-"""
-
 import logging
 
 from app.jobs import store
@@ -21,14 +13,18 @@ async def run_job(
     pat: str,
     platform: str,
 ) -> None:
-    """Launch the pipeline and map its lifecycle to the job store."""
+    def on_progress(stage: str, message: str) -> None:
+        store.update(job_id, status=JobStatus(stage))
+        store.append_log(job_id, stage, message)
+
     try:
         result = await run_pipeline(
             repo_url=repo_url,
             pat=pat,
             platform=platform,
-            on_progress=lambda stage: store.update(job_id, status=JobStatus(stage)),
+            on_progress=on_progress,
         )
+        store.append_log(job_id, "done", "Pipeline generation complete")
         store.update(
             job_id,
             status=JobStatus.DONE,
@@ -43,4 +39,5 @@ async def run_job(
 
     except Exception as e:
         logger.exception("Job %s failed", job_id)
+        store.append_log(job_id, "failed", str(e))
         store.update(job_id, status=JobStatus.FAILED, error=str(e))

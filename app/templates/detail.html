@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}RepoFlow — Job {{ job_id[:8] }}{% endblock %}
+
+{% block content %}
+<section class="detail-container">
+    <div class="detail-header">
+        <a href="/generate" class="btn-back">← Back</a>
+        <h1>Pipeline Generation</h1>
+        <span class="detail-job-id">{{ job_id[:8] }}</span>
+    </div>
+
+    <div class="stepper" id="stepper">
+        <div class="step" data-stage="cloning">
+            <div class="step-dot"></div>
+            <span class="step-label">Cloning</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-stage="analyzing">
+            <div class="step-dot"></div>
+            <span class="step-label">Analyzing</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-stage="generating">
+            <div class="step-dot"></div>
+            <span class="step-label">Generating</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-stage="validating">
+            <div class="step-dot"></div>
+            <span class="step-label">Validating</span>
+        </div>
+    </div>
+
+    <div class="log-panel">
+        <div class="log-panel-header">
+            <span>Logs</span>
+            <span class="log-status-indicator" id="log-status">Streaming</span>
+        </div>
+        <div class="log-entries" id="log-entries">
+            {% for entry in job.logs %}
+            <div class="log-entry">
+                <span class="log-time">{{ entry.timestamp }}</span>
+                <span class="log-stage">{{ entry.stage }}</span>
+                <span class="log-msg">{{ entry.message }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="result-panel" id="result-panel" style="display: none;">
+        <div class="result-header">
+            <span class="badge badge-done">Complete</span>
+            <div class="result-actions">
+                <button class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('yaml-output').textContent)">Copy</button>
+                <a href="/jobs/{{ job_id }}/download" class="btn-download" id="download-btn">Download .yml</a>
+            </div>
+        </div>
+        <pre><code id="yaml-output"></code></pre>
+    </div>
+
+    <div class="error-panel" id="error-panel" style="display: none;">
+        <div class="error-header">
+            <span class="badge badge-failed">Failed</span>
+        </div>
+        <p class="error-message" id="error-message"></p>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const JOB_ID = "{{ job_id }}";
+    const STAGES = ["cloning", "analyzing", "generating", "validating"];
+    const logEntries = document.getElementById("log-entries");
+    const stepper = document.getElementById("stepper");
+    const logStatus = document.getElementById("log-status");
+    const resultPanel = document.getElementById("result-panel");
+    const errorPanel = document.getElementById("error-panel");
+    const yamlOutput = document.getElementById("yaml-output");
+    const errorMessage = document.getElementById("error-message");
+
+    function activateStage(stage) {
+        const stageIdx = STAGES.indexOf(stage);
+        if (stageIdx === -1) return;
+
+        stepper.querySelectorAll(".step").forEach(function(el, i) {
+            el.classList.remove("active", "completed");
+            if (i < stageIdx) el.classList.add("completed");
+            if (i === stageIdx) el.classList.add("active");
+        });
+
+        stepper.querySelectorAll(".step-connector").forEach(function(el, i) {
+            el.classList.remove("completed");
+            if (i < stageIdx) el.classList.add("completed");
+        });
+    }
+
+    function appendLog(timestamp, stage, message) {
+        var entry = document.createElement("div");
+        entry.className = "log-entry log-entry-new";
+        entry.innerHTML =
+            '<span class="log-time">' + timestamp + '</span>' +
+            '<span class="log-stage">' + stage + '</span>' +
+            '<span class="log-msg">' + message + '</span>';
+        logEntries.appendChild(entry);
+        logEntries.scrollTop = logEntries.scrollHeight;
+    }
+
+    var source = new EventSource("/jobs/" + JOB_ID + "/stream");
+
+    source.addEventListener("log", function(e) {
+        var data = JSON.parse(e.data);
+        activateStage(data.stage);
+        appendLog(data.timestamp, data.stage, data.message);
+    });
+
+    source.addEventListener("complete", function(e) {
+        var data = JSON.parse(e.data);
+        source.close();
+        logStatus.textContent = "Complete";
+        logStatus.classList.add("log-status-done");
+
+        if (data.status === "done") {
+            stepper.querySelectorAll(".step").forEach(function(el) {
+                el.classList.remove("active");
+                el.classList.add("completed");
+            });
+            stepper.querySelectorAll(".step-connector").forEach(function(el) {
+                el.classList.add("completed");
+            });
+            yamlOutput.textContent = data.yaml || "";
+            resultPanel.style.display = "block";
+        } else if (data.status === "failed") {
+            logStatus.textContent = "Failed";
+            logStatus.classList.add("log-status-failed");
+            errorMessage.textContent = data.error || "An unknown error occurred";
+            errorPanel.style.display = "block";
+        }
+    });
+
+    source.onerror = function() {
+        source.close();
+        logStatus.textContent = "Disconnected";
+        logStatus.classList.add("log-status-failed");
+    };
+
+    {% if job.status.value == "done" %}
+        stepper.querySelectorAll(".step").forEach(function(el) {
+            el.classList.add("completed");
+        });
+        stepper.querySelectorAll(".step-connector").forEach(function(el) {
+            el.classList.add("completed");
+        });
+        logStatus.textContent = "Complete";
+        logStatus.classList.add("log-status-done");
+        {% if job.result %}
+            yamlOutput.textContent = {{ job.result.get("yaml", "")|tojson }};
+            resultPanel.style.display = "block";
+        {% endif %}
+        source.close();
+    {% elif job.status.value == "failed" %}
+        logStatus.textContent = "Failed";
+        logStatus.classList.add("log-status-failed");
+        errorMessage.textContent = {{ (job.error or "Unknown error")|tojson }};
+        errorPanel.style.display = "block";
+        source.close();
+    {% elif job.status.value != "pending" %}
+        activateStage("{{ job.status.value }}");
+    {% endif %}
+})();
+</script>
+{% endblock %}

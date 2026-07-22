@@ -19,8 +19,8 @@ dependencies = [
     # --- Phase 2: Core analysis ---
     "gitpython>=3.1.0",
 
-    # --- Phase 3: Background worker ---
-    "arq>=0.26.0",
+    # --- Phase 3: Real-time streaming ---
+    "sse-starlette>=2.0.0",
 
     # --- Phase 4: LLM + validation ---
     "groq>=0.9.0",

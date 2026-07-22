@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import BASE_DIR
 from app.logging_config import setup_logging
-from app.routes import generate, status, health
+from app.routes import generate, jobs, health
 
 
 def create_app() -> FastAPI:
@@ -14,7 +14,7 @@ def create_app() -> FastAPI:
 
     application.include_router(health.router)
     application.include_router(generate.router)
-    application.include_router(status.router)
+    application.include_router(jobs.router)
 
     return application
 
