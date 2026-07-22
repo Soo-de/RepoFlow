@@ -1,1 +1,7 @@
-# Pydantic models for incoming requests (GenerateRequest, etc.)
+from pydantic import BaseModel
+
+
+class GenerateRequest(BaseModel):
+    repo_url: str
+    pat: str = ""
+    platform: str = "auto"
