@@ -1,1 +1,52 @@
-<!-- index: the form (repo URL, PAT, platform selection) -->
+{% extends "base.html" %}
+
+{% block title %}RepoFlow — Generate CI/CD Pipelines{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Generate CI/CD Pipelines</h1>
+    <p class="hero-subtitle">Point us to your repository and we'll generate a production-ready pipeline configuration.</p>
+</section>
+
+<section class="form-container">
+    <form method="post" action="/generate" class="generate-form">
+        <div class="form-group">
+            <label for="repo_url">Repository URL</label>
+            <input
+                type="url"
+                id="repo_url"
+                name="repo_url"
+                placeholder="https://github.com/user/repo"
+                value="{{ repo_url or '' }}"
+                required
+            >
+        </div>
+
+        <div class="form-group">
+            <label for="pat">Personal Access Token</label>
+            <input
+                type="password"
+                id="pat"
+                name="pat"
+                placeholder="Optional — required for private repos"
+            >
+            <span class="form-hint">Your token is never stored. It's used once during cloning and discarded.</span>
+        </div>
+
+        <div class="form-group">
+            <label for="platform">Target Platform</label>
+            <select id="platform" name="platform">
+                <option value="auto" {{ 'selected' if platform == 'auto' or not platform else '' }}>Auto-detect</option>
+                <option value="github_actions" {{ 'selected' if platform == 'github_actions' else '' }}>GitHub Actions</option>
+                <option value="azure_pipelines" {{ 'selected' if platform == 'azure_pipelines' else '' }}>Azure Pipelines</option>
+            </select>
+        </div>
+
+        <button type="submit" class="btn-primary">Generate Pipeline</button>
+    </form>
+
+    {% if message %}
+    <div class="message-banner">{{ message }}</div>
+    {% endif %}
+</section>
+{% endblock %}
