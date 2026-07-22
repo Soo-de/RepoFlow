@@ -1,7 +1,7 @@
 import uuid
 import asyncio
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import templates
 from app.jobs import store, run_job
