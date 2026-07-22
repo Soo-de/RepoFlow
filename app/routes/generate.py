@@ -1,25 +1,32 @@
+import uuid
+import asyncio
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 
 from app import templates
+from app.jobs import store, run_job
 
 router = APIRouter(tags=["generate"])
 
 
-@router.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+@router.get("/", response_class=RedirectResponse)
+async def index():
+    return RedirectResponse(url="/generate")
+
+
+@router.get("/generate", response_class=HTMLResponse)
+async def generate_view(request: Request):
     return templates.TemplateResponse(request, "index.html")
 
 
-@router.post("/generate", response_class=HTMLResponse)
+@router.post("/generate")
 async def generate_pipeline(
-    request: Request,
     repo_url: str = Form(...),
     pat: str = Form(""),
     platform: str = Form("auto"),
 ):
-    return templates.TemplateResponse(request, "index.html", context={
-        "message": "Pipeline generation will be wired in Phase 3.",
-        "repo_url": repo_url,
-        "platform": platform,
-    })
+    job_id = str(uuid.uuid4())
+    store.create(job_id)
+    asyncio.create_task(run_job(job_id, repo_url, pat, platform))
+    return RedirectResponse(url=f"/status/{job_id}", status_code=303)
+

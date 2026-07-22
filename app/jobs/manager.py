@@ -1,24 +1,18 @@
-import asyncio
+"""
+Async job runner — thin wrapper that connects the pipeline facade to the job store.
+
+Called via asyncio.create_task() from routes/generate.py.
+Delegates all real work to core/pipeline.execute() and translates
+progress callbacks into store updates for HTMX polling.
+"""
+
 import logging
-import tempfile
-import shutil
-from pathlib import Path
-from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
 
 from app.jobs import store
 from app.jobs.store import JobStatus
+from app.core.pipeline import execute as run_pipeline
 
 logger = logging.getLogger(__name__)
-
-
-@asynccontextmanager
-async def temp_workspace() -> AsyncIterator[Path]:
-    workspace = Path(tempfile.mkdtemp(prefix="repoflow_"))
-    try:
-        yield workspace
-    finally:
-        shutil.rmtree(workspace, ignore_errors=True)
 
 
 async def run_job(
@@ -27,30 +21,25 @@ async def run_job(
     pat: str,
     platform: str,
 ) -> None:
+    """Launch the pipeline and map its lifecycle to the job store."""
     try:
-        async with temp_workspace() as workspace:
-            store.update(job_id, status=JobStatus.CLONING)
-            logger.info("Job %s: cloning %s", job_id, repo_url)
-            await asyncio.sleep(0)
-
-            store.update(job_id, status=JobStatus.ANALYZING)
-            logger.info("Job %s: analyzing", job_id)
-            await asyncio.sleep(0)
-
-            store.update(job_id, status=JobStatus.GENERATING)
-            logger.info("Job %s: generating pipeline", job_id)
-            await asyncio.sleep(0)
-
-            store.update(job_id, status=JobStatus.VALIDATING)
-            logger.info("Job %s: validating output", job_id)
-            await asyncio.sleep(0)
-
-            store.update(
-                job_id,
-                status=JobStatus.DONE,
-                result={"yaml": "# placeholder pipeline output"},
-            )
-            logger.info("Job %s: complete", job_id)
+        result = await run_pipeline(
+            repo_url=repo_url,
+            pat=pat,
+            platform=platform,
+            on_progress=lambda stage: store.update(job_id, status=JobStatus(stage)),
+        )
+        store.update(
+            job_id,
+            status=JobStatus.DONE,
+            result={
+                "yaml": result.yaml_output,
+                "platform": result.platform,
+                "validation_passed": result.validation_passed,
+                "validation_errors": result.validation_errors,
+            },
+        )
+        logger.info("Job %s: complete", job_id)
 
     except Exception as e:
         logger.exception("Job %s failed", job_id)
