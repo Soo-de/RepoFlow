@@ -48,8 +48,15 @@ if echo "$LAST_COMMIT_MSG" | grep -iqE '\[ship\]|\[ready\]|\[merge\]'; then
         done
         
         if [ "$MERGED" = true ]; then
-            git fetch origin develop:develop >/dev/null 2>&1
-            echo "GitHub Action merged PR! Local 'develop' branch updated automatically."
+            CURRENT_FEATURE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            git checkout develop >/dev/null 2>&1 || true
+            git pull origin develop >/dev/null 2>&1 || git fetch origin develop:develop >/dev/null 2>&1
+            if [ "$CURRENT_FEATURE_BRANCH" != "develop" ] && [ "$CURRENT_FEATURE_BRANCH" != "main" ]; then
+                git branch -d "$CURRENT_FEATURE_BRANCH" >/dev/null 2>&1 || git branch -D "$CURRENT_FEATURE_BRANCH" >/dev/null 2>&1 || true
+                echo "GitHub Action merged PR! Switched to 'develop' and auto-deleted branch '$CURRENT_FEATURE_BRANCH'."
+            else
+                echo "GitHub Action merged PR! Local 'develop' branch updated automatically."
+            fi
         else
             echo "Timed out waiting for remote GitHub Action merge. Check GitHub Actions tab."
         fi

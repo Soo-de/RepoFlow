@@ -32,9 +32,9 @@ fi
 # Step 2: Merge PR into develop using AI Agent summary as squash commit message
 if [ -n "$PR_NUM" ]; then
   echo "Merging PR #$PR_NUM into $BASE_BRANCH..."
-  gh pr merge "$PR_NUM" --squash --body-file pr_body.md --admin || \
-  gh pr merge "$PR_NUM" --squash --body-file pr_body.md --auto || \
-  gh pr merge "$PR_NUM" --squash --body-file pr_body.md || \
+  gh pr merge "$PR_NUM" --squash --body-file pr_body.md --delete-branch --admin || \
+  gh pr merge "$PR_NUM" --squash --body-file pr_body.md --delete-branch --auto || \
+  gh pr merge "$PR_NUM" --squash --body-file pr_body.md --delete-branch || \
   echo "PR merge request submitted to GitHub."
 else
   echo "Warning: No open PR found for branch $HEAD_BRANCH."
