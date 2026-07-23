@@ -87,31 +87,4 @@ jobs:
           HEAD_BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: 'develop'
         run: |
-          # Fallback: Ensure pr_body.md exists
-          if [ ! -f pr_body.md ]; then
-            echo "### Automated PR for \`$HEAD_BRANCH\`" > pr_body.md
-          fi
-
-          # 1. Search for existing PR
-          PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
-
-          if [ -z "$PR_NUM" ]; then
-            echo "Creating Pull Request from $HEAD_BRANCH to $BASE_BRANCH..."
-            CREATE_OUTPUT=$(gh pr create --base "$BASE_BRANCH" --head "$HEAD_BRANCH" --title "feat($HEAD_BRANCH): auto-merge into develop" --body-file pr_body.md 2>&1) || true
-            echo "GH PR CREATE LOG: $CREATE_OUTPUT"
-            PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
-          else
-            echo "Existing PR #$PR_NUM found. Updating description..."
-            gh pr edit "$PR_NUM" --body-file pr_body.md || true
-          fi
-
-          # 2. Merge PR into develop
-          if [ -n "$PR_NUM" ]; then
-            echo "Merging PR #$PR_NUM into $BASE_BRANCH..."
-            gh pr merge "$PR_NUM" --squash --admin || \
-            gh pr merge "$PR_NUM" --squash --auto || \
-            gh pr merge "$PR_NUM" --squash || \
-            echo "PR merge request submitted to GitHub."
-          else
-            echo "Warning: No open PR found for branch $HEAD_BRANCH."
-          fi
+          bash .github/scripts/merge_pr.sh
