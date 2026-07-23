@@ -97,13 +97,9 @@ jobs:
 
           if [ -z "$PR_NUM" ]; then
             echo "Creating Pull Request from $HEAD_BRANCH to $BASE_BRANCH..."
-            if gh pr create --base "$BASE_BRANCH" --head "$HEAD_BRANCH" --title "feat($HEAD_BRANCH): auto-merge into develop" --body-file pr_body.md; then
-              echo "PR created successfully."
-              PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
-            else
-              echo "Notice: PR creation returned non-zero exit code. Fetching existing PR number..."
-              PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
-            fi
+            CREATE_OUTPUT=$(gh pr create --base "$BASE_BRANCH" --head "$HEAD_BRANCH" --title "feat($HEAD_BRANCH): auto-merge into develop" --body-file pr_body.md 2>&1) || true
+            echo "GH PR CREATE LOG: $CREATE_OUTPUT"
+            PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
           else
             echo "Existing PR #$PR_NUM found. Updating description..."
             gh pr edit "$PR_NUM" --body-file pr_body.md || true
