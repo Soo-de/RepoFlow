@@ -15,10 +15,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.9",
     "pydantic-settings>=2.4.0",
-
-    # --- Phase 2: Core analysis ---
-    "gitpython>=3.1.0",
-
+    
     # --- Phase 3: Real-time streaming ---
     "sse-starlette>=2.0.0",
 

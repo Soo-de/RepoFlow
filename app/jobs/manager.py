@@ -3,6 +3,7 @@ import logging
 from app.jobs import store
 from app.jobs.store import JobStatus
 from app.core.pipeline import execute as run_pipeline
+from app.core.repo_service import CloneError
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +34,18 @@ async def run_job(
                 "platform": result.platform,
                 "validation_passed": result.validation_passed,
                 "validation_errors": result.validation_errors,
+                "analysis": result.analysis,
             },
         )
         logger.info("Job %s: complete", job_id)
+
+    except CloneError as e:
+        logger.warning("Job %s: clone failed — %s", job_id, e)
+        store.append_log(job_id, "failed", str(e))
+        store.update(job_id, status=JobStatus.FAILED, error=str(e))
 
     except Exception as e:
         logger.exception("Job %s failed", job_id)
         store.append_log(job_id, "failed", str(e))
         store.update(job_id, status=JobStatus.FAILED, error=str(e))
+

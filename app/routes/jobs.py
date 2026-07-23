@@ -11,6 +11,14 @@ from app.routes.generate import _render_job_row
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
+@router.get("/queue/row/{job_id}", response_class=HTMLResponse)
+async def queue_row(job_id: str):
+    job = store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return HTMLResponse(content=_render_job_row(job_id, job))
+
+
 @router.get("/{job_id}", response_class=HTMLResponse)
 async def job_detail(request: Request, job_id: str):
     job = store.get(job_id)
@@ -24,13 +32,13 @@ async def job_detail(request: Request, job_id: str):
 
 
 @router.get("/{job_id}/stream")
-async def job_stream(job_id: str):
+async def job_stream(job_id: str, cursor: int = 0):
     job = store.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     async def event_generator():
-        async for entry in store.subscribe(job_id):
+        async for entry in store.subscribe(job_id, cursor=cursor):
             yield {
                 "event": "log",
                 "data": json.dumps({
@@ -68,11 +76,3 @@ async def job_download(job_id: str):
         media_type="application/x-yaml",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-@router.get("/queue/row/{job_id}", response_class=HTMLResponse)
-async def queue_row(job_id: str):
-    job = store.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return HTMLResponse(content=_render_job_row(job_id, job))
