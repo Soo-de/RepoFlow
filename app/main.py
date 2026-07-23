@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-
 from app import BASE_DIR
 from app.logging_config import setup_logging
 from app.routes import generate, jobs, health

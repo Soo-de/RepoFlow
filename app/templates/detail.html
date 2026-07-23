@@ -116,7 +116,8 @@
         logEntries.scrollTop = logEntries.scrollHeight;
     }
 
-    var source = new EventSource("/jobs/" + JOB_ID + "/stream");
+    var initialLogCount = logEntries.querySelectorAll(".log-entry").length;
+    var source = new EventSource("/jobs/" + JOB_ID + "/stream?cursor=" + initialLogCount);
 
     source.addEventListener("log", function(e) {
         var data = JSON.parse(e.data);

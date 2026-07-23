@@ -83,12 +83,11 @@ def list_all() -> dict[str, Job]:
     return dict(_jobs)
 
 
-async def subscribe(job_id: str) -> AsyncGenerator[LogEntry, None]:
+async def subscribe(job_id: str, cursor: int = 0) -> AsyncGenerator[LogEntry, None]:
     job = _jobs.get(job_id)
     if job is None:
         return
 
-    cursor = 0
     while True:
         while cursor < len(job.logs):
             yield job.logs[cursor]
@@ -98,3 +97,4 @@ async def subscribe(job_id: str) -> AsyncGenerator[LogEntry, None]:
             return
 
         await job._notify.wait()
+
