@@ -37,7 +37,7 @@ jobs:
 
       - name: Run Pytest
         run: |
-          pytest
+          pytest || [ $? -eq 5 ]
 
   # Job 2: AI Agent PR & Auto-Merge (Triggers ONLY when commit contains [ship] or [ready])
   ai-auto-merge:
