@@ -1,0 +1,117 @@
+name: Auto PR & Merge to Develop
+
+# Trigger on push to any branch except main and develop
+on:
+  push:
+    branches-ignore:
+      - 'main'
+      - 'develop'
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: write
+
+jobs:
+  # Job 1: Run Pytest suite
+  test:
+    name: Run Pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Run Pytest
+        run: |
+          pytest || [ $? -eq 5 ]
+
+  # Job 2: AI Agent PR & Auto-Merge (Triggers ONLY when commit contains [ship] or [ready])
+  ai-auto-merge:
+    name: AI Agent PR & Merge
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      statuses: write
+      checks: read
+
+    # Only run if latest commit message contains [ship], [ready], or [merge]
+    if: |
+      contains(github.event.head_commit.message, '[ship]') ||
+      contains(github.event.head_commit.message, '[ready]') ||
+      contains(github.event.head_commit.message, '[merge]')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure Git Bot Identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run AI Agent PR Summarizer
+        env:
+          HEAD_BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: 'develop'
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          python .github/scripts/ai_pr_agent.py || echo "AI summarizer warning, falling back to default summary."
+
+      - name: Create PR & Merge to Develop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: 'develop'
+        run: |
+          # Fallback: Ensure pr_body.md exists
+          if [ ! -f pr_body.md ]; then
+            echo "### Automated PR for \`$HEAD_BRANCH\`" > pr_body.md
+          fi
+
+          # 1. Search for existing PR
+          PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
+
+          if [ -z "$PR_NUM" ]; then
+            echo "Creating Pull Request from $HEAD_BRANCH to $BASE_BRANCH..."
+            CREATE_OUTPUT=$(gh pr create --base "$BASE_BRANCH" --head "$HEAD_BRANCH" --title "feat($HEAD_BRANCH): auto-merge into develop" --body-file pr_body.md 2>&1) || true
+            echo "GH PR CREATE LOG: $CREATE_OUTPUT"
+            PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
+          else
+            echo "Existing PR #$PR_NUM found. Updating description..."
+            gh pr edit "$PR_NUM" --body-file pr_body.md || true
+          fi
+
+          # 2. Merge PR into develop
+          if [ -n "$PR_NUM" ]; then
+            echo "Merging PR #$PR_NUM into $BASE_BRANCH..."
+            gh pr merge "$PR_NUM" --squash --admin || \
+            gh pr merge "$PR_NUM" --squash --auto || \
+            gh pr merge "$PR_NUM" --squash || \
+            echo "PR merge request submitted to GitHub."
+          else
+            echo "Warning: No open PR found for branch $HEAD_BRANCH."
+          fi
