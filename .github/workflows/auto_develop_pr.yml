@@ -79,7 +79,7 @@ jobs:
           BASE_BRANCH: 'develop'
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          python .github/scripts/ai_pr_agent.py
+          python .github/scripts/ai_pr_agent.py || echo "AI summarizer warning, falling back to default summary."
 
       - name: Create PR & Merge to Develop
         env:
@@ -87,25 +87,35 @@ jobs:
           HEAD_BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: 'develop'
         run: |
-          # 1. Check if PR already exists
-          PR_EXISTS=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number')
+          # Fallback: Ensure pr_body.md exists
+          if [ ! -f pr_body.md ]; then
+            echo "### Automated PR for \`$HEAD_BRANCH\`" > pr_body.md
+          fi
 
-          if [ -z "$PR_EXISTS" ] || [ "$PR_EXISTS" == "null" ]; then
-            echo "Creating PR using AI Agent summary..."
-            PR_URL=$(gh pr create \
-              --base "$BASE_BRANCH" \
-              --head "$HEAD_BRANCH" \
-              --title "feat($HEAD_BRANCH): auto-merge into develop" \
-              --body-file pr_body.md)
-            echo "PR created: $PR_URL"
-            PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number')
+          # 1. Search for existing PR
+          PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
+
+          if [ -z "$PR_NUM" ]; then
+            echo "Creating Pull Request from $HEAD_BRANCH to $BASE_BRANCH..."
+            if gh pr create --base "$BASE_BRANCH" --head "$HEAD_BRANCH" --title "feat($HEAD_BRANCH): auto-merge into develop" --body-file pr_body.md; then
+              echo "PR created successfully."
+              PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
+            else
+              echo "Notice: PR creation returned non-zero exit code. Fetching existing PR number..."
+              PR_NUM=$(gh pr list --head "$HEAD_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')
+            fi
           else
-            echo "Existing PR #$PR_EXISTS found. Updating PR body with AI summary..."
-            gh pr edit "$PR_EXISTS" --body-file pr_body.md
-            PR_NUM=$PR_EXISTS
+            echo "Existing PR #$PR_NUM found. Updating description..."
+            gh pr edit "$PR_NUM" --body-file pr_body.md || true
           fi
 
           # 2. Merge PR into develop
-          echo "Merging PR #$PR_NUM into $BASE_BRANCH..."
-          gh pr merge "$PR_NUM" --squash --admin || gh pr merge "$PR_NUM" --squash --auto || gh pr merge "$PR_NUM" --squash || echo "PR merge step completed."
-          echo "Successfully processed PR #$PR_NUM into $BASE_BRANCH!"
+          if [ -n "$PR_NUM" ]; then
+            echo "Merging PR #$PR_NUM into $BASE_BRANCH..."
+            gh pr merge "$PR_NUM" --squash --admin || \
+            gh pr merge "$PR_NUM" --squash --auto || \
+            gh pr merge "$PR_NUM" --squash || \
+            echo "PR merge request submitted to GitHub."
+          else
+            echo "Warning: No open PR found for branch $HEAD_BRANCH."
+          fi
