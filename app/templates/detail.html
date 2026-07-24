@@ -71,7 +71,8 @@
 {
     "status": {{ (job.status.value if job.status.value is defined else job.status)|tojson }},
     "yaml": {{ (job.result.get("yaml", "") if job.result else "")|tojson }},
-    "error": {{ (job.error or "")|tojson }}
+    "error": {{ (job.error or "")|tojson }},
+    "failed_stage": {{ (job.failed_stage or "")|tojson }}
 }
 </script>
 {% endblock %}
@@ -94,14 +95,52 @@
         if (stageIdx === -1) return;
 
         stepper.querySelectorAll(".step").forEach(function(el, i) {
-            el.classList.remove("active", "completed");
+            el.classList.remove("active", "completed", "failed");
             if (i < stageIdx) el.classList.add("completed");
             if (i === stageIdx) el.classList.add("active");
         });
 
         stepper.querySelectorAll(".step-connector").forEach(function(el, i) {
-            el.classList.remove("completed");
+            el.classList.remove("completed", "failed");
             if (i < stageIdx) el.classList.add("completed");
+        });
+    }
+
+    function markFailedStage(failedStage) {
+        let failedIdx = STAGES.indexOf(failedStage);
+        if (failedIdx === -1) {
+            var entries = logEntries.querySelectorAll(".log-stage");
+            for (var i = entries.length - 1; i >= 0; i--) {
+                var st = entries[i].textContent.trim();
+                if (STAGES.includes(st)) {
+                    failedIdx = STAGES.indexOf(st);
+                    break;
+                }
+            }
+        }
+        if (failedIdx === -1) failedIdx = 0;
+
+        stepper.querySelectorAll(".step").forEach(function(el, i) {
+            el.classList.remove("active", "completed", "failed");
+            if (i < failedIdx) el.classList.add("completed");
+            if (i === failedIdx) el.classList.add("failed");
+        });
+
+        stepper.querySelectorAll(".step-connector").forEach(function(el, i) {
+            el.classList.remove("completed", "failed");
+            if (i < failedIdx) el.classList.add("completed");
+            if (i === failedIdx) el.classList.add("failed");
+        });
+    }
+
+    function markAllCompleted() {
+        stepper.querySelectorAll(".step").forEach(function(el) {
+            el.classList.remove("active", "failed");
+            el.classList.add("completed");
+        });
+        stepper.querySelectorAll(".step-connector").forEach(function(el) {
+            el.classList.remove("failed");
+            el.classList.add("completed");
         });
     }
 
@@ -121,29 +160,26 @@
 
     source.addEventListener("log", function(e) {
         var data = JSON.parse(e.data);
-        activateStage(data.stage);
+        if (data.stage && STAGES.includes(data.stage)) {
+            activateStage(data.stage);
+        }
         appendLog(data.timestamp, data.stage, data.message);
     });
 
     source.addEventListener("complete", function(e) {
         var data = JSON.parse(e.data);
         source.close();
-        logStatus.textContent = "Complete";
-        logStatus.classList.add("log-status-done");
 
         if (data.status === "done") {
-            stepper.querySelectorAll(".step").forEach(function(el) {
-                el.classList.remove("active");
-                el.classList.add("completed");
-            });
-            stepper.querySelectorAll(".step-connector").forEach(function(el) {
-                el.classList.add("completed");
-            });
+            logStatus.textContent = "Complete";
+            logStatus.classList.add("log-status-done");
+            markAllCompleted();
             yamlOutput.textContent = data.yaml || "";
             resultPanel.style.display = "block";
         } else if (data.status === "failed") {
             logStatus.textContent = "Failed";
             logStatus.classList.add("log-status-failed");
+            markFailedStage(data.failed_stage);
             errorMessage.textContent = data.error || "An unknown error occurred";
             errorPanel.style.display = "block";
         }
@@ -162,12 +198,7 @@
             const status = initialData.status;
 
             if (status === "done") {
-                stepper.querySelectorAll(".step").forEach(function(el) {
-                    el.classList.add("completed");
-                });
-                stepper.querySelectorAll(".step-connector").forEach(function(el) {
-                    el.classList.add("completed");
-                });
+                markAllCompleted();
                 logStatus.textContent = "Complete";
                 logStatus.classList.add("log-status-done");
                 if (initialData.yaml) {
@@ -178,6 +209,7 @@
             } else if (status === "failed") {
                 logStatus.textContent = "Failed";
                 logStatus.classList.add("log-status-failed");
+                markFailedStage(initialData.failed_stage);
                 errorMessage.textContent = initialData.error || "An unknown error occurred";
                 errorPanel.style.display = "block";
                 source.close();

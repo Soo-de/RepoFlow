@@ -14,7 +14,11 @@ async def run_job(
     pat: str,
     platform: str,
 ) -> None:
+    current_stage = "cloning"
+
     def on_progress(stage: str, message: str) -> None:
+        nonlocal current_stage
+        current_stage = stage
         store.update(job_id, status=JobStatus(stage))
         store.append_log(job_id, stage, message)
 
@@ -41,11 +45,11 @@ async def run_job(
 
     except CloneError as e:
         logger.warning("Job %s: clone failed — %s", job_id, e)
-        store.append_log(job_id, "failed", str(e))
-        store.update(job_id, status=JobStatus.FAILED, error=str(e))
+        store.append_log(job_id, "cloning", str(e))
+        store.update(job_id, status=JobStatus.FAILED, error=str(e), failed_stage="cloning")
 
     except Exception as e:
         logger.exception("Job %s failed", job_id)
-        store.append_log(job_id, "failed", str(e))
-        store.update(job_id, status=JobStatus.FAILED, error=str(e))
+        store.append_log(job_id, current_stage, str(e))
+        store.update(job_id, status=JobStatus.FAILED, error=str(e), failed_stage=current_stage)
 
