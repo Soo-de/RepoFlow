@@ -39,6 +39,7 @@ jobs:
       - name: Run Pytest
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           pytest || [ $? -eq 5 ]
 
@@ -80,6 +81,7 @@ jobs:
           HEAD_BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: 'develop'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           python .github/scripts/ai_pr_agent.py || echo "AI summarizer warning, falling back to default summary."
 
