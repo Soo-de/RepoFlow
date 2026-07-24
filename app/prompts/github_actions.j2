@@ -16,23 +16,15 @@ CRITICAL RULES:
 2. Workflow Name & Triggers:
    - Define `name: CI`.
    - Configure triggers for both `push` and `pull_request` targeting `main` and `master` branches.
-3. Modular Job Hierarchy (`jobs:`):
+3. Job Hierarchy (`jobs:`):
    - `test` Job (`runs-on: ubuntu-latest`):
      a. Checkout repository using `actions/checkout@v4`.
      b. Setup language environment using modern official setup actions (`actions/setup-python@v5`, `actions/setup-node@v4`, `actions/setup-go@v5`, `actions/setup-java@v4`) with built-in dependency caching enabled (e.g., `cache: 'pip'`, `cache: 'npm'`, `cache: 'go'`).
      c. Install dependencies ONCE (e.g., `pip install -r requirements.txt` or `npm ci`).
-     d. Run test suite (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`). Tests MUST run before any artifact or container build/push tasks.
+     d. Run test suite (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
      e. Container Services: If required services are specified (e.g. postgres, redis), declare them under `jobs.test.services:`.
-   - `build` Job (`runs-on: ubuntu-latest`, ONLY if Dockerfile present):
-     a. MUST specify `needs: test` so build executes ONLY after the `test` job completes successfully.
-     b. Checkout repository (`actions/checkout@v4`).
-     c. Set up Docker Buildx (`docker/setup-buildx-action@v3`).
-     d. Build and tag Docker image using `docker/build-push-action@v6`.
-     e. Tagging Strategy: ALWAYS tag images with both full commit SHA (`${{ '{{' }} github.sha }}`) and `latest`. Never tag with `latest` alone.
-     f. Push Condition: Set `push: ${{ '{{' }} github.event_name != 'pull_request' }}` (or `if: github.event_name != 'pull_request'`) to prevent Pull Request builds from pushing images to registries.
 4. GitHub Actions Syntax & Best Practices:
-   - Use native GitHub Actions expressions (`${{ '{{' }} github.sha }}`, `${{ '{{' }} github.event_name }}`).
-   - Use official, modern action versions (`@v4`, `@v5`, `@v6`).
+   - Use official, modern action versions (`@v4`, `@v5`).
    - Maintain clear job and step `name:` attributes, with concise inline comments explaining job dependencies and caching strategy.
    - Keep the workflow clean, modular, and DRY.
 

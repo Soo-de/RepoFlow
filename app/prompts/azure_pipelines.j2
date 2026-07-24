@@ -14,9 +14,7 @@ Generate a production-ready, modular, secure, and clean multi-stage `azure-pipel
 CRITICAL RULES:
 1. Output ONLY pure, valid YAML content. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
 2. Structure & Hierarchy:
-   - Use a multi-stage architecture (`stages:` -> `stage:` -> `jobs:` -> `job:` -> `steps:`).
-   - Stage 1: `Test` (Runs environment setup, dependency caching, installation, testing, and test result publishing).
-   - Stage 2: `Build` (Runs artifact/container build and push operations; MUST include `dependsOn: Test` and `condition: succeeded()`).
+   - Output a single-stage CI pipeline. You can use direct step-based structure (`trigger:`, `pool:`, `variables:`, `steps:`) or a single `Test` job under a single `Test` stage for clarity.
 3. Branch Triggers:
    - Define `trigger` for default branches (`main`, `master`).
 4. Modern Execution Standards & Task Best Practices:
@@ -26,13 +24,7 @@ CRITICAL RULES:
    - Test Execution & Reporting:
      - Run tests via CLI (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
      - For Python suites using pytest, run `pytest --junitxml=junit/test-results.xml` and publish results with `PublishTestResults@2` using `testRunner: 'JUnit'` and `condition: succeededOrFailed()`.
-5. Docker Container Step (If Dockerfile present):
-   - Use `Docker@2` task with `command: 'buildAndPush'`.
-   - Use absolute workspace variables: `Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'` (or the appropriate relative path to the Dockerfile in the project) and `buildContext: '$(Build.SourcesDirectory)'`. Never use glob patterns like `**` for `buildContext`.
-   - Tags: Always include both `$(Build.BuildId)` and `latest`.
-   - Registry & Auth: For `containerRegistry`, use a generic placeholder like `<YOUR_AZURE_DEVOPS_SERVICE_CONNECTION_NAME>`.
-   - Condition: Add `condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))` to prevent unintended image pushes during PR validation builds.
-6. Cleanliness & Readability:
-   - Include clear, helpful stage and step `displayName` attributes and short explanatory comments.
+5. Cleanliness & Readability:
+   - Include clear, helpful step `displayName` attributes and short explanatory comments.
    - Keep the YAML clean, DRY, and modular.
 
