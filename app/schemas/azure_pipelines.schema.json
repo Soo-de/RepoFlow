@@ -1,1 +1,34 @@
-{}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Azure Pipelines Schema",
+  "type": "object",
+  "anyOf": [
+    { "required": ["trigger"] },
+    { "required": ["steps"] },
+    { "required": ["jobs"] },
+    { "required": ["stages"] }
+  ],
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "trigger": {
+      "type": ["object", "array", "string", "boolean"]
+    },
+    "pool": {
+      "type": ["object", "string"]
+    },
+    "variables": {
+      "type": ["object", "array"]
+    },
+    "steps": {
+      "type": "array"
+    },
+    "jobs": {
+      "type": "array"
+    },
+    "stages": {
+      "type": "array"
+    }
+  }
+}
