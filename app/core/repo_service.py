@@ -33,7 +33,16 @@ def _parse_clone_error(stderr: str) -> str:
         or "could not read password" in lower
         or "terminal prompts disabled" in lower
     ):
-        return "Authentication failed — check your GitHub PAT or repository permissions"
+        provider = "PAT"
+        if "github.com" in lower:
+            provider = "GitHub PAT"
+        elif "gitlab.com" in lower:
+            provider = "GitLab PAT"
+        elif "bitbucket" in lower:
+            provider = "Bitbucket App Password"
+        elif "dev.azure.com" in lower or "visualstudio.com" in lower:
+            provider = "Azure DevOps PAT"
+        return f"Authentication failed — check your {provider} or repository permissions"
 
     if "repository not found" in lower or "does not exist" in lower:
         return "Repository not found — check the URL"

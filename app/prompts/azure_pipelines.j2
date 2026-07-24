@@ -21,14 +21,16 @@ CRITICAL RULES:
    - Define `trigger` for default branches (`main`, `master`).
 4. Modern Execution Standards & Task Best Practices:
    - NEVER use legacy or obsolete Azure tasks such as `PythonPackage@0` or `Python@0`. Use standard, transparent `script:` steps invoking native CLI commands.
-   - Caching (`Cache@2`): Point `path` to actual package cache directories (e.g., `$(Pipeline.Workspace)/.pip` for Python with `PIP_CACHE_DIR` variable set, or `~/.npm` for Node.js), NOT requirements/manifest files.
+   - Run python projects in a deterministic locked environment: always include `UsePythonVersion@0` (e.g. specifying the version using a variable like `PYTHON_VERSION: '{{ analysis.runtime_version if analysis.runtime_version else "3.10" }}'`) before executing pip/pytest steps.
+   - Caching (`Cache@2`): Point `path` to actual package cache directories (e.g., `$(Pipeline.Workspace)/.pip` for Python with `PIP_CACHE_DIR` variable set, or `~/.npm` for Node.js), NOT requirements/manifest files. ALWAYS wrap filename/manifest paths in double quotes in the `key:` parameter (e.g., `'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/requirements.txt"'` or `'npm | "$(Agent.OS)" | "$(Build.SourcesDirectory)/package-lock.json"'`) so Azure Pipelines computes a SHA256 content hash of the file rather than using a literal string.
    - Test Execution & Reporting:
      - Run tests via CLI (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
      - For Python suites using pytest, run `pytest --junitxml=junit/test-results.xml` and publish results with `PublishTestResults@2` using `testRunner: 'JUnit'` and `condition: succeededOrFailed()`.
 5. Docker Container Step (If Dockerfile present):
    - Use `Docker@2` task with `command: 'buildAndPush'`.
-   - Use absolute workspace variables: `Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'` and `buildContext: '$(Build.SourcesDirectory)'`. Never use glob patterns like `**` for `buildContext`.
+   - Use absolute workspace variables: `Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'` (or the appropriate relative path to the Dockerfile in the project) and `buildContext: '$(Build.SourcesDirectory)'`. Never use glob patterns like `**` for `buildContext`.
    - Tags: Always include both `$(Build.BuildId)` and `latest`.
+   - Registry & Auth: For `containerRegistry`, use a generic placeholder like `<YOUR_AZURE_DEVOPS_SERVICE_CONNECTION_NAME>`.
    - Condition: Add `condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))` to prevent unintended image pushes during PR validation builds.
 6. Cleanliness & Readability:
    - Include clear, helpful stage and step `displayName` attributes and short explanatory comments.
