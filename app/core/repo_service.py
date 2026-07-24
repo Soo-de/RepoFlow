@@ -24,11 +24,16 @@ def _inject_pat(url: str, pat: str) -> str:
 
 
 def _parse_clone_error(stderr: str) -> str:
-    """Extract a user-friendly message from git stderr output."""
+    """Extract a user-friendly message from git stderr output and sanitize secrets."""
     lower = stderr.lower()
 
-    if "authentication failed" in lower or "could not read username" in lower:
-        return "Authentication failed — check your PAT or repository permissions"
+    if (
+        "authentication failed" in lower
+        or "could not read username" in lower
+        or "could not read password" in lower
+        or "terminal prompts disabled" in lower
+    ):
+        return "Authentication failed — check your GitHub PAT or repository permissions"
 
     if "repository not found" in lower or "does not exist" in lower:
         return "Repository not found — check the URL"
@@ -39,9 +44,15 @@ def _parse_clone_error(stderr: str) -> str:
     if "fatal:" in lower:
         for line in stderr.splitlines():
             if line.strip().lower().startswith("fatal:"):
-                return line.strip()
+                # Sanitize any embedded token/password in URL (e.g. https://token@github.com)
+                sanitized_line = line.strip()
+                if "@" in sanitized_line and "https://" in sanitized_line:
+                    import re
+                    sanitized_line = re.sub(r"https://[^@]+@", "https://***@", sanitized_line)
+                return sanitized_line
 
     return f"Clone failed: {stderr.strip()[:200]}"
+
 
 
 async def clone(repo_url: str, pat: str = "") -> Path:

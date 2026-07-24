@@ -37,7 +37,15 @@ def test_parse_clone_error_auth_failed():
 def test_parse_clone_error_could_not_read_username():
     stderr = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
     parsed = _parse_clone_error(stderr)
-    assert parsed == "Authentication failed — check your PAT or repository permissions"
+    assert "Authentication failed" in parsed
+
+
+def test_parse_clone_error_could_not_read_password():
+    stderr = "fatal: could not read Password for 'https://gsk_secret123@github.com': terminal prompts disabled"
+    parsed = _parse_clone_error(stderr)
+    assert "Authentication failed" in parsed
+    assert "gsk_secret123" not in parsed
+
 
 
 def test_parse_clone_error_repo_not_found():
