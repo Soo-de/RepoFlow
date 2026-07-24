@@ -19,6 +19,7 @@ def get_git_diff(base_branch: str) -> str:
     diff_text = ""
     try:
         subprocess.run(["git", "fetch", "origin", base_branch], check=True, capture_output=True)
+        # Primary: Triple-dot diff captures all commits since branch point
         result = subprocess.run(
             ["git", "diff", f"origin/{base_branch}...HEAD"],
             capture_output=True,
