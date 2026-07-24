@@ -3,7 +3,7 @@
 AI Agent for GitHub Actions PR Summarization & Verification
 ------------------------------------------------------------
 Analyzes git diff between feature branch and target branch (develop),
-generates an AI-powered PR summary, and posts/updates the PR body using Gemini API.
+generates an AI-powered PR summary using Gemini API or Groq API (with automatic fallback).
 """
 
 import os
@@ -92,10 +92,53 @@ def get_git_diff(base_branch: str) -> str:
     return diff_text[:8000] if len(diff_text) > 8000 else diff_text
 
 
-def generate_ai_summary(diff_text: str, head_branch: str, api_key: str) -> str:
-    """Uses Gemini API to generate a structured PR summary from git diff."""
-    if not api_key:
-        print("CRITICAL ERROR: GEMINI_API_KEY secret is missing or empty in GitHub Repository Secrets!")
+def _call_gemini_api(prompt: str, gemini_key: str) -> str:
+    """Call Gemini REST API for PR summary."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1000}
+    }
+    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
+    with urllib.request.urlopen(req) as response:
+        res_data = json.loads(response.read().decode('utf-8'))
+        candidates = res_data.get('candidates', [])
+        if candidates:
+            parts = candidates[0].get('content', {}).get('parts', [])
+            if parts:
+                return parts[0].get('text', '')
+    raise RuntimeError("Empty candidates response from Gemini API")
+
+
+def _call_groq_api(prompt: str, groq_key: str) -> str:
+    """Call Groq REST API for PR summary."""
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {groq_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3,
+        "max_tokens": 1000,
+    }
+    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
+    with urllib.request.urlopen(req) as response:
+        res_data = json.loads(response.read().decode('utf-8'))
+        choices = res_data.get('choices', [])
+        if choices:
+            content = choices[0].get('message', {}).get('content', '')
+            if content:
+                return content
+    raise RuntimeError("Empty response from Groq API")
+
+
+def generate_ai_summary(diff_text: str, head_branch: str, gemini_key: str, groq_key: str) -> str:
+    """Uses Gemini API or Groq API (with fallback) to generate a PR summary."""
+    if not gemini_key and not groq_key:
+        print("CRITICAL ERROR: Neither GEMINI_API_KEY nor GROQ_API_KEY is set in GitHub Secrets!")
         return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
 
     if not diff_text:
@@ -111,48 +154,46 @@ def generate_ai_summary(diff_text: str, head_branch: str, api_key: str) -> str:
         f"Git Diff / Commit Context:\n{diff_text}"
     )
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    headers = {
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 1000,
-        }
-    }
+    # Attempt 1: Gemini API
+    if gemini_key:
+        try:
+            ai_content = _call_gemini_api(prompt, gemini_key)
+            print("SUCCESS: Generated PR summary using Gemini API.")
+            return f"### 🤖 AI Agent PR Summary (Gemini)\n\n{ai_content}"
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode('utf-8', errors='replace')
+            print(f"Gemini API HTTP Error {e.code}: {err_body}")
+            if groq_key and e.code == 429:
+                print("Falling back to Groq API due to Gemini rate limit (429)...")
+        except Exception as e:
+            print(f"Gemini API Exception: {e}")
 
-    try:
-        req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
-        with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode('utf-8'))
-            candidates = res_data.get('candidates', [])
-            if candidates:
-                parts = candidates[0].get('content', {}).get('parts', [])
-                if parts:
-                    ai_content = parts[0].get('text', '')
-                    print("SUCCESS: Gemini API returned AI summary successfully.")
-                    return f"### 🤖 AI Agent PR Summary\n\n{ai_content}"
-        raise RuntimeError("Empty candidates response from Gemini API")
-    except urllib.error.HTTPError as e:
-        err_detail = e.read().decode('utf-8', errors='replace')
-        print(f"Gemini API HTTP Error {e.code}: {err_detail}")
-        return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
-    except Exception as e:
-        print(f"Gemini API Call Exception: {e}")
-        return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
+    # Attempt 2: Groq API (as fallback or primary if Groq key provided)
+    if groq_key:
+        try:
+            ai_content = _call_groq_api(prompt, groq_key)
+            print("SUCCESS: Generated PR summary using Groq API.")
+            return f"### 🤖 AI Agent PR Summary (Groq)\n\n{ai_content}"
+        except Exception as e:
+            print(f"Groq API Exception: {e}")
+
+    return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
 
 
 def main():
     head_branch = os.environ.get("HEAD_BRANCH", "")
     base_branch = os.environ.get("BASE_BRANCH", "develop")
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+
+    print(f"DEBUG: HEAD_BRANCH='{head_branch}', BASE_BRANCH='{base_branch}'")
+    print(f"DEBUG: Gemini Key present: {'Yes' if gemini_key else 'No'}, Groq Key present: {'Yes' if groq_key else 'No'}")
 
     diff_text = get_git_diff(base_branch)
-    ai_summary = generate_ai_summary(diff_text, head_branch, api_key)
+    print(f"DEBUG: Diff text length: {len(diff_text)} chars")
 
-    # Save summary to file for GitHub Actions to use
+    ai_summary = generate_ai_summary(diff_text, head_branch, gemini_key, groq_key)
+
     with open("pr_body.md", "w", encoding="utf-8") as f:
         f.write(ai_summary)
 

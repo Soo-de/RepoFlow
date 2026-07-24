@@ -56,8 +56,14 @@ async def execute(
         prompt_builder = PromptBuilder()
         prompt = prompt_builder.build(detected_platform, analysis)
 
-        await _report("generating", "Calling Gemini API to generate pipeline YAML")
-        llm_client = LLMClient(api_key=settings.gemini_api_key)
+        await _report("generating", f"Calling LLM API (provider: {settings.llm_provider}) to generate pipeline YAML")
+        llm_client = LLMClient(
+            gemini_api_key=settings.gemini_api_key,
+            groq_api_key=settings.groq_api_key,
+            provider=settings.llm_provider,
+            gemini_model=settings.gemini_model,
+            groq_model=settings.groq_model,
+        )
         try:
             raw_yaml_output = await llm_client.generate(prompt)
         finally:
