@@ -1,1 +1,39 @@
-{}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GitHub Actions Workflow Schema",
+  "type": "object",
+  "required": ["on", "jobs"],
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "on": {
+      "type": ["object", "array", "string"]
+    },
+    "env": {
+      "type": "object"
+    },
+    "jobs": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["runs-on", "steps"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "runs-on": {
+            "type": ["string", "array"]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    }
+  }
+}
