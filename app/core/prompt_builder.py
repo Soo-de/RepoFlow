@@ -29,3 +29,26 @@ class PromptBuilder:
             raise ValueError(f"Prompt template for platform '{platform.value}' not found: {template_name}") from err
 
         return template.render(analysis=analysis)
+
+    def build_correction(
+        self,
+        invalid_yaml: str,
+        errors: list[str],
+        platform: Platform | None = None,
+        analysis: RepoAnalysis | None = None,
+    ) -> str:
+        """Render the correction prompt template with validation errors, invalid YAML, and optional project context."""
+        try:
+            template = self._env.get_template("correction.j2")
+        except jinja2.TemplateNotFound as err:
+            raise ValueError("Correction prompt template 'correction.j2' not found.") from err
+
+        platform_name = platform.value if platform else "CI/CD"
+        return template.render(
+            invalid_yaml=invalid_yaml,
+            validation_errors=errors,
+            platform_name=platform_name,
+            analysis=analysis,
+        )
+
+

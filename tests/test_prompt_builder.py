@@ -38,3 +38,14 @@ def test_prompt_builder_azure_pipelines():
     assert "Node.js" in prompt
     assert "npm test" in prompt
     assert "Azure Pipelines" in prompt
+
+
+def test_prompt_builder_correction():
+    builder = PromptBuilder()
+    invalid_yaml = "invalid: yaml: structure"
+    errors = ["Schema Error: 'jobs' is required", "YAML Syntax Error: unclosed block"]
+    prompt = builder.build_correction(invalid_yaml, errors)
+    assert "invalid: yaml: structure" in prompt
+    assert "Schema Error: 'jobs' is required" in prompt
+    assert "YAML Syntax Error: unclosed block" in prompt
+

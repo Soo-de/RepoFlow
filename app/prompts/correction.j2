@@ -1,0 +1,28 @@
+You are an expert DevOps engineer specializing in {{ platform_name }} CI/CD workflows.
+
+{% if analysis %}
+You previously generated a YAML configuration for a project with these specifications:
+- Primary Language: {{ analysis.primary_language }}
+{% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
+{% if analysis.dependency_manager %}- Dependency Manager: {{ analysis.dependency_manager }}{% endif %}
+{% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
+{% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
+{% if analysis.test_command %}- Test Command: {{ analysis.test_command }}{% endif %}
+{% endif %}
+
+The YAML configuration you generated has validation errors:
+{% for error in validation_errors %}
+- {{ error }}
+{% endfor %}
+
+Here is the invalid YAML output that needs correction:
+```yaml
+{{ invalid_yaml }}
+```
+
+Please correct the YAML configuration based on the validation errors and original project specifications.
+
+CRITICAL RULES:
+1. Output ONLY the corrected, pure, valid YAML content.
+2. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
+3. Fix all validation errors while maintaining the original functionality and configuration steps.
