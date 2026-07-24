@@ -1,6 +1,6 @@
 You are an expert DevOps engineer specializing in GitHub Actions CI/CD workflows.
 
-Generate a production-ready, minimal, clean, and complete `.github/workflows/ci.yml` GitHub Actions pipeline based on the following project analysis:
+Generate a production-ready, modular, secure, and clean `.github/workflows/ci.yml` GitHub Actions pipeline based on the following project analysis:
 
 - Primary Language: {{ analysis.primary_language }}
 {% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
@@ -13,6 +13,19 @@ Generate a production-ready, minimal, clean, and complete `.github/workflows/ci.
 
 CRITICAL RULES:
 1. Output ONLY pure, valid YAML content. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
-2. The workflow must define `name: CI`, trigger `on` push and pull_request to default branches (e.g. `main` or `master`).
-3. Include jobs with proper `runs-on: ubuntu-latest`, checkout action `actions/checkout@v4`, runtime setup (e.g., `actions/setup-python@v5` or `actions/setup-node@v4`), dependency installation, and running tests.
-4. If services are needed (e.g. postgres, redis), include container services under the job configuration.
+2. Workflow Name & Triggers:
+   - Define `name: CI`.
+   - Configure triggers for both `push` and `pull_request` targeting `main` and `master` branches.
+3. Job Hierarchy (`jobs:`):
+   - `test` Job (`runs-on: ubuntu-latest`):
+     a. Checkout repository using `actions/checkout@v4`.
+     b. Setup language environment using modern official setup actions (`actions/setup-python@v5`, `actions/setup-node@v4`, `actions/setup-go@v5`, `actions/setup-java@v4`) with built-in dependency caching enabled (e.g., `cache: 'pip'`, `cache: 'npm'`, `cache: 'go'`).
+     c. Install dependencies ONCE (e.g., `pip install -r requirements.txt` or `npm ci`).
+     d. Run test suite (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
+     e. Container Services: If required services are specified (e.g. postgres, redis), declare them under `jobs.test.services:`.
+4. GitHub Actions Syntax & Best Practices:
+   - Use official, modern action versions (`@v4`, `@v5`).
+   - Maintain clear job and step `name:` attributes, with concise inline comments explaining job dependencies and caching strategy.
+   - Keep the workflow clean, modular, and DRY.
+
+

@@ -31,13 +31,27 @@ def test_inject_pat_with_port():
 def test_parse_clone_error_auth_failed():
     stderr = "fatal: Authentication failed for 'https://github.com/org/repo.git/'"
     parsed = _parse_clone_error(stderr)
+    assert parsed == "Authentication failed — check your GitHub PAT or repository permissions"
+
+
+def test_parse_clone_error_auth_failed_generic():
+    stderr = "fatal: Authentication failed for 'https://custom-git.internal/org/repo.git/'"
+    parsed = _parse_clone_error(stderr)
     assert parsed == "Authentication failed — check your PAT or repository permissions"
 
 
 def test_parse_clone_error_could_not_read_username():
     stderr = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
     parsed = _parse_clone_error(stderr)
-    assert parsed == "Authentication failed — check your PAT or repository permissions"
+    assert "Authentication failed" in parsed
+
+
+def test_parse_clone_error_could_not_read_password():
+    stderr = "fatal: could not read Password for 'https://gsk_secret123@github.com': terminal prompts disabled"
+    parsed = _parse_clone_error(stderr)
+    assert "Authentication failed" in parsed
+    assert "gsk_secret123" not in parsed
+
 
 
 def test_parse_clone_error_repo_not_found():
@@ -82,7 +96,7 @@ async def test_clone_private_repo_no_pat():
     )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
-        with pytest.raises(CloneError, match="Authentication failed — check your PAT or repository permissions"):
+        with pytest.raises(CloneError, match="Authentication failed — check your GitHub PAT or repository permissions"):
             await clone(repo_url, pat="")
 
 
@@ -99,7 +113,7 @@ async def test_clone_private_repo_invalid_pat():
     )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
-        with pytest.raises(CloneError, match="Authentication failed — check your PAT or repository permissions"):
+        with pytest.raises(CloneError, match="Authentication failed — check your GitHub PAT or repository permissions"):
             await clone(repo_url, pat=invalid_pat)
 
 

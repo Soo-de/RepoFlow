@@ -1,6 +1,6 @@
-You are an expert DevOps engineer specializing in Azure Pipelines CI/CD.
+You are an expert DevOps engineer specializing in Azure Pipelines CI/CD workflows.
 
-Generate a production-ready, minimal, clean, and complete `azure-pipelines.yml` pipeline based on the following project analysis:
+Generate a production-ready, modular, secure, and clean multi-stage `azure-pipelines.yml` pipeline based on the following project analysis:
 
 - Primary Language: {{ analysis.primary_language }}
 {% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
@@ -13,6 +13,18 @@ Generate a production-ready, minimal, clean, and complete `azure-pipelines.yml` 
 
 CRITICAL RULES:
 1. Output ONLY pure, valid YAML content. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
-2. The pipeline must define `trigger` for default branches (e.g. `main` or `master`).
-3. Use a Linux vmImage pool (`vmImage: 'ubuntu-latest'`).
-4. Include steps for environment setup, dependency installation, build (if applicable), and running tests.
+2. Structure & Hierarchy:
+   - Output a single-stage CI pipeline. You can use direct step-based structure (`trigger:`, `pool:`, `variables:`, `steps:`) or a single `Test` job under a single `Test` stage for clarity.
+3. Branch Triggers:
+   - Define `trigger` for default branches (`main`, `master`).
+4. Modern Execution Standards & Task Best Practices:
+   - NEVER use legacy or obsolete Azure tasks such as `PythonPackage@0` or `Python@0`. Use standard, transparent `script:` steps invoking native CLI commands.
+   - Run python projects in a deterministic locked environment: always include `UsePythonVersion@0` (e.g. specifying the version using a variable like `PYTHON_VERSION: '{{ analysis.runtime_version if analysis.runtime_version else "3.10" }}'`) before executing pip/pytest steps.
+   - Caching (`Cache@2`): Point `path` to actual package cache directories (e.g., `$(Pipeline.Workspace)/.pip` for Python with `PIP_CACHE_DIR` variable set, or `~/.npm` for Node.js), NOT requirements/manifest files. ALWAYS wrap filename/manifest paths in double quotes in the `key:` parameter (e.g., `'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/requirements.txt"'` or `'npm | "$(Agent.OS)" | "$(Build.SourcesDirectory)/package-lock.json"'`) so Azure Pipelines computes a SHA256 content hash of the file rather than using a literal string.
+   - Test Execution & Reporting:
+     - Run tests via CLI (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
+     - For Python suites using pytest, run `pytest --junitxml=junit/test-results.xml` and publish results with `PublishTestResults@2` using `testRunner: 'JUnit'` and `condition: succeededOrFailed()`.
+5. Cleanliness & Readability:
+   - Include clear, helpful step `displayName` attributes and short explanatory comments.
+   - Keep the YAML clean, DRY, and modular.
+
