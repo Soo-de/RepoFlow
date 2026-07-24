@@ -11,30 +11,82 @@ import subprocess
 import json
 import urllib.request
 import urllib.parse
+import urllib.error
 
 
 def get_git_diff(base_branch: str) -> str:
-    """Fetches git diff between base_branch and HEAD."""
+    """Fetches full git diff across ALL feature branch commits relative to base_branch."""
+    diff_text = ""
     try:
-        # Fetch base branch to ensure accurate diff
         subprocess.run(["git", "fetch", "origin", base_branch], check=True, capture_output=True)
+        # Primary: Triple-dot diff captures all commits since branch point
         result = subprocess.run(
             ["git", "diff", f"origin/{base_branch}...HEAD"],
-            check=True,
             capture_output=True,
             text=True
         )
-        diff_text = result.stdout.strip()
-        # Truncate large diffs to stay within token limits
-        return diff_text[:8000] if len(diff_text) > 8000 else diff_text
+        if result.returncode == 0:
+            diff_text = result.stdout.strip()
     except Exception as e:
-        print(f"Error fetching git diff: {e}")
-        return ""
+        print(f"Error fetching git diff for origin/{base_branch}...HEAD: {e}")
+
+    # Fallback 1: Find merge-base and diff all feature branch commits
+    if not diff_text:
+        try:
+            mb_res = subprocess.run(
+                ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
+                capture_output=True,
+                text=True
+            )
+            mb = mb_res.stdout.strip()
+            if mb:
+                res = subprocess.run(
+                    ["git", "diff", mb, "HEAD"],
+                    capture_output=True,
+                    text=True
+                )
+                if res.returncode == 0:
+                    diff_text = res.stdout.strip()
+        except Exception as e:
+            print(f"Error computing merge-base diff: {e}")
+
+    # Fallback 2: Patch log for all unmerged commits on current branch
+    if not diff_text:
+        try:
+            res = subprocess.run(
+                ["git", "log", f"origin/{base_branch}..HEAD", "-p"],
+                capture_output=True,
+                text=True
+            )
+            if res.returncode == 0:
+                diff_text = res.stdout.strip()
+        except Exception as e:
+            print(f"Error computing git log patch: {e}")
+
+    # Fallback 3: Last resort (single commit)
+    if not diff_text:
+        try:
+            res = subprocess.run(
+                ["git", "show", "HEAD"],
+                capture_output=True,
+                text=True
+            )
+            if res.returncode == 0:
+                diff_text = res.stdout.strip()
+        except Exception as e:
+            print(f"Error running git show HEAD: {e}")
+
+    return diff_text[:8000] if len(diff_text) > 8000 else diff_text
 
 
 def generate_ai_summary(diff_text: str, head_branch: str, api_key: str) -> str:
     """Uses Gemini API to generate a structured PR summary from git diff."""
-    if not api_key or not diff_text:
+    if not api_key:
+        print("Warning: GEMINI_API_KEY is not set. Using default summary.")
+        return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
+
+    if not diff_text:
+        print("Warning: Git diff is empty. Using default summary.")
         return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
 
     prompt = (
