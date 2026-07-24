@@ -1,0 +1,160 @@
+{
+  "github_actions": {
+    "required_root_keys": [
+      {
+        "key": "concurrency",
+        "message": "Concurrency controls ('concurrency:') are missing. Please add a concurrency group and cancel-in-progress: true."
+      },
+      {
+        "key": "permissions",
+        "message": "Permissions ('permissions:') are missing at the top level. Please add 'permissions: contents: read'."
+      }
+    ],
+    "step_rules": [
+      {
+        "type": "required_property",
+        "match": {
+          "key": "uses",
+          "contains": "setup-python"
+        },
+        "target_path": ["with", "python-version"],
+        "message": "'setup-python' step is missing the explicit 'python-version' parameter under 'with:'."
+      },
+      {
+        "type": "forbidden_substring",
+        "match": {
+          "script_contains": ["pytest"]
+        },
+        "substring": "GITHUB_STEP_SUMMARY",
+        "inverted": true,
+        "message": "Please write a test summary to $GITHUB_STEP_SUMMARY after running pytest so that unit test outcomes are displayed directly on the PR page."
+      }
+    ],
+    "service_rules": {
+      "message": "Service '{service}' under job '{job}' was generated but is not needed for this project (project services needed: {needed}). Please remove it."
+    }
+  },
+  "azure_pipelines": {
+    "required_root_keys": [
+      {
+        "key": "pr",
+        "message": "Pull request triggers ('pr:') are missing at the top level. Without this, Azure Pipelines will not test PRs automatically."
+      }
+    ],
+    "step_ordering_rules": [
+      {
+        "first": {
+          "key": "task",
+          "starts_with": "cache@2"
+        },
+        "second": {
+          "script_contains": ["pip install", "npm install", "npm ci", "yarn install", "poetry install"]
+        },
+        "message": "The Cache@2 task must be defined BEFORE the dependency installation step to restore the cache properly."
+      }
+    ],
+    "step_rules": [
+      {
+        "type": "forbidden_substring",
+        "match": {
+          "script_contains": ["pip install"]
+        },
+        "substring": "--target",
+        "message": "Do not use 'pip install --target' for package installation, as it breaks module imports at runtime. Use standard 'pip install' and leverage the PIP_CACHE_DIR environment variable for caching."
+      },
+      {
+        "type": "forbidden_substring",
+        "match": {
+          "script_contains": ["pip install -r"]
+        },
+        "substring": "pip install --upgrade pip",
+        "inverted": true,
+        "message": "Please upgrade pip by running 'python -m pip install --upgrade pip' (or similar) before installing dependencies from requirements.txt."
+      },
+      {
+        "type": "forbidden_input_property",
+        "match": {
+          "key": "task",
+          "starts_with": "publishtestresults"
+        },
+        "forbidden_property": "condition",
+        "message": "'condition' is a step-level property, not an input parameter of PublishTestResults. Move 'condition' outside of the 'inputs' block."
+      },
+      {
+        "type": "required_property",
+        "match": {
+          "key": "task",
+          "starts_with": "usepythonversion"
+        },
+        "target_path": ["inputs"],
+        "message": "Task 'UsePythonVersion' is missing the required 'inputs' block."
+      },
+      {
+        "type": "required_property",
+        "match": {
+          "key": "task",
+          "starts_with": "usepythonversion"
+        },
+        "target_path": ["inputs", "versionSpec"],
+        "message": "Task 'UsePythonVersion' is missing the required input parameter 'versionSpec' under 'inputs:'."
+      },
+      {
+        "type": "property_type",
+        "match": {
+          "key": "task",
+          "starts_with": "usepythonversion"
+        },
+        "target_path": ["inputs", "versionSpec"],
+        "expected_type": "string_or_number",
+        "message": "Parameter 'versionSpec' in 'UsePythonVersion' must be a string or number."
+      },
+      {
+        "type": "required_property",
+        "match": {
+          "key": "task",
+          "starts_with": "publishtestresults"
+        },
+        "target_path": ["inputs"],
+        "message": "Task 'PublishTestResults' is missing the required 'inputs' block."
+      },
+      {
+        "type": "required_property",
+        "match": {
+          "key": "task",
+          "starts_with": "publishtestresults"
+        },
+        "target_path": ["inputs", "testResultsFormat"],
+        "message": "Task 'PublishTestResults' is missing the required input parameter 'testResultsFormat' under 'inputs:'."
+      },
+      {
+        "type": "allowed_values",
+        "match": {
+          "key": "task",
+          "starts_with": "publishtestresults"
+        },
+        "target_path": ["inputs", "testResultsFormat"],
+        "values": ["junit", "nunit", "vstest", "xunit", "ctest"],
+        "message": "Parameter 'testResultsFormat' in 'PublishTestResults' must be one of JUNIT, NUNIT, VSTEST, XUNIT, CTEST."
+      },
+      {
+        "type": "required_property",
+        "match": {
+          "key": "task",
+          "starts_with": "publishtestresults"
+        },
+        "target_path": ["inputs", "testResultsFiles"],
+        "message": "Task 'PublishTestResults' is missing the required input parameter 'testResultsFiles' under 'inputs:'."
+      },
+      {
+        "type": "property_type",
+        "match": {
+          "key": "task",
+          "starts_with": "publishtestresults"
+        },
+        "target_path": ["inputs", "testResultsFiles"],
+        "expected_type": "string",
+        "message": "Parameter 'testResultsFiles' in 'PublishTestResults' must be a string."
+      }
+    ]
+  }
+}

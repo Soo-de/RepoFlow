@@ -14,17 +14,20 @@ Generate a production-ready, modular, secure, and clean multi-stage `azure-pipel
 CRITICAL RULES:
 1. Output ONLY pure, valid YAML content. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
 2. Structure & Hierarchy:
-   - Output a single-stage CI pipeline. You can use direct step-based structure (`trigger:`, `pool:`, `variables:`, `steps:`) or a single `Test` job under a single `Test` stage for clarity.
-3. Branch Triggers:
-   - Define `trigger` for default branches (`main`, `master`).
+   - Output a single-stage CI pipeline with a single `Test` stage containing a single `Test` job.
+3. Triggers & Concurrency:
+   - Define both push triggers (`trigger:`) and pull request triggers (`pr:`) targeting default branches (`main`, `master`).
+   - Do NOT include any top-level `concurrency` block in the YAML file (Azure DevOps does not support this in its YAML schema; auto-cancellation of redundant builds is configured in the Azure DevOps Portal UI under Pipeline Settings/Triggers).
 4. Modern Execution Standards & Task Best Practices:
    - NEVER use legacy or obsolete Azure tasks such as `PythonPackage@0` or `Python@0`. Use standard, transparent `script:` steps invoking native CLI commands.
-   - Run python projects in a deterministic locked environment: always include `UsePythonVersion@0` (e.g. specifying the version using a variable like `PYTHON_VERSION: '{{ analysis.runtime_version if analysis.runtime_version else "3.10" }}'`) before executing pip/pytest steps.
-   - Caching (`Cache@2`): Point `path` to actual package cache directories (e.g., `$(Pipeline.Workspace)/.pip` for Python with `PIP_CACHE_DIR` variable set, or `~/.npm` for Node.js), NOT requirements/manifest files. ALWAYS wrap filename/manifest paths in double quotes in the `key:` parameter (e.g., `'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/requirements.txt"'` or `'npm | "$(Agent.OS)" | "$(Build.SourcesDirectory)/package-lock.json"'`) so Azure Pipelines computes a SHA256 content hash of the file rather than using a literal string.
+   - Run python projects in a deterministic locked environment: always include `UsePythonVersion@0` (specifying the version using a variable like `PYTHON_VERSION: '{{ analysis.runtime_version if analysis.runtime_version else "3.10" }}'`) before executing pip/pytest steps.
+   - Caching (`Cache@2`): 
+     - ALWAYS place the `Cache@2` task BEFORE the dependency installation step so it can restore the cache before dependencies are installed.
+     - For Python pip caching: Do NOT install dependencies using `pip install --target`. Always upgrade pip first (e.g., `python -m pip install --upgrade pip`) before running standard `pip install -r requirements.txt`. Configure `pip` to use a cache directory by setting the `PIP_CACHE_DIR` environment variable (e.g., `$(Pipeline.Workspace)/.pip`) on the step. Point `path` of the `Cache@2` task to `$(PIP_CACHE_DIR)`.
+     - ALWAYS wrap filename/manifest paths in double quotes in the `key:` parameter (e.g., `'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/requirements.txt"'`) so Azure Pipelines computes a SHA256 content hash of the file.
    - Test Execution & Reporting:
-     - Run tests via CLI (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
-     - For Python suites using pytest, run `pytest --junitxml=junit/test-results.xml` and publish results with `PublishTestResults@2` using `testRunner: 'JUnit'` and `condition: succeededOrFailed()`.
+     - Run tests via CLI (`pytest --junitxml=junit/test-results.xml`).
+     - Publish results using `PublishTestResults@2` with `testRunner: 'JUnit'` and `testResultsFiles: 'junit/test-results.xml'` under `inputs:`, and specify `condition: succeededOrFailed()` at the step level (outside the `inputs:` block).
 5. Cleanliness & Readability:
    - Include clear, helpful step `displayName` attributes and short explanatory comments.
    - Keep the YAML clean, DRY, and modular.
-

@@ -13,19 +13,23 @@ Generate a production-ready, modular, secure, and clean `.github/workflows/ci.ym
 
 CRITICAL RULES:
 1. Output ONLY pure, valid YAML content. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
-2. Workflow Name & Triggers:
+2. Workflow Name, Permissions, & Triggers:
    - Define `name: CI`.
+   - Define explicit permissions at the top level: `permissions: contents: read`.
+   - Configure concurrency controls at the top level to prevent redundant builds: `concurrency: group: {% raw %}${{ github.workflow }}-${{ github.ref }}{% endraw %}` and `cancel-in-progress: true`.
    - Configure triggers for both `push` and `pull_request` targeting `main` and `master` branches.
 3. Job Hierarchy (`jobs:`):
    - `test` Job (`runs-on: ubuntu-latest`):
      a. Checkout repository using `actions/checkout@v4`.
-     b. Setup language environment using modern official setup actions (`actions/setup-python@v5`, `actions/setup-node@v4`, `actions/setup-go@v5`, `actions/setup-java@v4`) with built-in dependency caching enabled (e.g., `cache: 'pip'`, `cache: 'npm'`, `cache: 'go'`).
-     c. Install dependencies ONCE (e.g., `pip install -r requirements.txt` or `npm ci`).
-     d. Run test suite (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
-     e. Container Services: If required services are specified (e.g. postgres, redis), declare them under `jobs.test.services:`.
+     b. Setup language environment using modern official setup actions with explicit version and built-in dependency caching enabled (e.g., for Python, uses `actions/setup-python@v5` with `python-version: '{{ analysis.runtime_version if analysis.runtime_version else "3.10" }}'` and `cache: 'pip'`).
+     c. Install dependencies ONCE (e.g., `pip install --upgrade pip` followed by `pip install -r requirements.txt` or `npm ci`).
+     d. Run test suite. For Python, run `pytest --junitxml=junit/test-results.xml`.
+     e. Publish Test Summary: Write a clear test summary directly to the GitHub Step Summary (e.g. by adding a script step running `echo "### Test Summary" >> $GITHUB_STEP_SUMMARY` after test execution) so developers can view test outcomes directly on the PR page.
+     f. Upload test results artifact using `actions/upload-artifact@v4` with `if: always()` so they are archived when failures occur.
+{% if analysis.services_needed %}
+     g. Container Services: Declare the required services ({{ analysis.services_needed | join(', ') }}) under `jobs.test.services:`. Ensure they are configured with appropriate health checks.
+{% endif %}
 4. GitHub Actions Syntax & Best Practices:
    - Use official, modern action versions (`@v4`, `@v5`).
    - Maintain clear job and step `name:` attributes, with concise inline comments explaining job dependencies and caching strategy.
    - Keep the workflow clean, modular, and DRY.
-
-

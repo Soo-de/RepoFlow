@@ -9,7 +9,8 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
-MAX_RETRIES = 2
+MAX_RETRIES = 4
+
 
 
 class LLMClient:
