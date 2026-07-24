@@ -1,1 +1,5 @@
-# Pydantic models for outgoing responses (JobStatus, PipelineResult, etc.)
+from pydantic import BaseModel
+
+
+class HealthResponse(BaseModel):
+    status: str

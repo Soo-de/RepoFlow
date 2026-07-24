@@ -1,1 +1,65 @@
-<!-- index: the form (repo URL, PAT, platform selection) -->
+{% extends "base.html" %}
+
+{% block title %}RepoFlow — Generate CI/CD Pipelines{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Generate CI/CD Pipelines</h1>
+    <p class="hero-subtitle">Point us to your repository and we'll generate a production-ready pipeline configuration.</p>
+</section>
+
+<section class="form-container">
+    <form hx-post="/generate"
+          hx-target="#job-queue"
+          hx-swap="afterbegin"
+          hx-on:htmx:after-request="document.getElementById('job-queue-section').style.display = 'block'; this.reset();">
+        <div class="generate-form">
+            <div class="form-group">
+                <label for="repo_url">Repository URL</label>
+                <input
+                    type="url"
+                    id="repo_url"
+                    name="repo_url"
+                    placeholder="https://github.com/user/repo"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="pat">Personal Access Token</label>
+                <input
+                    type="password"
+                    id="pat"
+                    name="pat"
+                    placeholder="Optional — required for private repos"
+                >
+                <span class="form-hint">Your token is never stored. It's used once during cloning and discarded.</span>
+            </div>
+
+            <div class="form-group">
+                <label for="platform">Target Platform</label>
+                <select id="platform" name="platform">
+                    <option value="auto" selected>Auto-detect</option>
+                    <option value="github_actions">GitHub Actions</option>
+                    <option value="azure_pipelines">Azure Pipelines</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn-primary">Generate Pipeline</button>
+        </div>
+    </form>
+</section>
+
+<section id="job-queue-section" class="queue-section" {% if not job_rows %}style="display: none;"{% endif %}>
+    <div class="queue-header">
+        <h2>Pipeline Jobs</h2>
+    </div>
+    <div id="job-queue" class="job-queue">
+        {% if job_rows %}
+            {% for row in job_rows %}
+                {{ row | safe }}
+            {% endfor %}
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

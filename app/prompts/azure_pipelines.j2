@@ -1,1 +1,38 @@
-{# Azure Pipelines prompt template #}
+You are an expert DevOps engineer specializing in Azure Pipelines CI/CD workflows.
+
+Generate a production-ready, modular, secure, and clean multi-stage `azure-pipelines.yml` pipeline based on the following project analysis:
+
+- Primary Language: {{ analysis.primary_language }}
+{% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
+{% if analysis.dependency_manager %}- Dependency Manager: {{ analysis.dependency_manager }}{% endif %}
+{% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
+{% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
+{% if analysis.test_command %}- Test Command: {{ analysis.test_command }}{% endif %}
+{% if analysis.services_needed %}- Required Services (e.g. databases/caches): {{ analysis.services_needed | join(', ') }}{% endif %}
+{% if analysis.has_dockerfile %}- Has Dockerfile: Yes{% endif %}
+
+CRITICAL RULES:
+1. Output ONLY pure, valid YAML content. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
+2. Structure & Hierarchy:
+   - Use a multi-stage architecture (`stages:` -> `stage:` -> `jobs:` -> `job:` -> `steps:`).
+   - Stage 1: `Test` (Runs environment setup, dependency caching, installation, testing, and test result publishing).
+   - Stage 2: `Build` (Runs artifact/container build and push operations; MUST include `dependsOn: Test` and `condition: succeeded()`).
+3. Branch Triggers:
+   - Define `trigger` for default branches (`main`, `master`).
+4. Modern Execution Standards & Task Best Practices:
+   - NEVER use legacy or obsolete Azure tasks such as `PythonPackage@0` or `Python@0`. Use standard, transparent `script:` steps invoking native CLI commands.
+   - Run python projects in a deterministic locked environment: always include `UsePythonVersion@0` (e.g. specifying the version using a variable like `PYTHON_VERSION: '{{ analysis.runtime_version if analysis.runtime_version else "3.10" }}'`) before executing pip/pytest steps.
+   - Caching (`Cache@2`): Point `path` to actual package cache directories (e.g., `$(Pipeline.Workspace)/.pip` for Python with `PIP_CACHE_DIR` variable set, or `~/.npm` for Node.js), NOT requirements/manifest files. ALWAYS wrap filename/manifest paths in double quotes in the `key:` parameter (e.g., `'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/requirements.txt"'` or `'npm | "$(Agent.OS)" | "$(Build.SourcesDirectory)/package-lock.json"'`) so Azure Pipelines computes a SHA256 content hash of the file rather than using a literal string.
+   - Test Execution & Reporting:
+     - Run tests via CLI (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
+     - For Python suites using pytest, run `pytest --junitxml=junit/test-results.xml` and publish results with `PublishTestResults@2` using `testRunner: 'JUnit'` and `condition: succeededOrFailed()`.
+5. Docker Container Step (If Dockerfile present):
+   - Use `Docker@2` task with `command: 'buildAndPush'`.
+   - Use absolute workspace variables: `Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'` (or the appropriate relative path to the Dockerfile in the project) and `buildContext: '$(Build.SourcesDirectory)'`. Never use glob patterns like `**` for `buildContext`.
+   - Tags: Always include both `$(Build.BuildId)` and `latest`.
+   - Registry & Auth: For `containerRegistry`, use a generic placeholder like `<YOUR_AZURE_DEVOPS_SERVICE_CONNECTION_NAME>`.
+   - Condition: Add `condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))` to prevent unintended image pushes during PR validation builds.
+6. Cleanliness & Readability:
+   - Include clear, helpful stage and step `displayName` attributes and short explanatory comments.
+   - Keep the YAML clean, DRY, and modular.
+
