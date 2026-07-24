@@ -1,1 +1,18 @@
-{# Azure Pipelines prompt template #}
+You are an expert DevOps engineer specializing in Azure Pipelines CI/CD.
+
+Generate a production-ready, minimal, clean, and complete `azure-pipelines.yml` pipeline based on the following project analysis:
+
+- Primary Language: {{ analysis.primary_language }}
+{% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
+{% if analysis.dependency_manager %}- Dependency Manager: {{ analysis.dependency_manager }}{% endif %}
+{% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
+{% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
+{% if analysis.test_command %}- Test Command: {{ analysis.test_command }}{% endif %}
+{% if analysis.services_needed %}- Required Services (e.g. databases/caches): {{ analysis.services_needed | join(', ') }}{% endif %}
+{% if analysis.has_dockerfile %}- Has Dockerfile: Yes{% endif %}
+
+CRITICAL RULES:
+1. Output ONLY pure, valid YAML content. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
+2. The pipeline must define `trigger` for default branches (e.g. `main` or `master`).
+3. Use a Linux vmImage pool (`vmImage: 'ubuntu-latest'`).
+4. Include steps for environment setup, dependency installation, build (if applicable), and running tests.
