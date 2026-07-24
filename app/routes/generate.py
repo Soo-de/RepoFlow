@@ -39,7 +39,7 @@ async def generate_pipeline(
     return HTMLResponse(content=_render_job_row(job_id, job))
 
 
-def _render_mini_stepper(status: JobStatus, logs: list) -> str:
+def _render_mini_stepper(status: JobStatus, logs: list, failed_stage: str | None = None) -> str:
     if status == JobStatus.DONE:
         items = []
         for i, stage in enumerate(STAGES):
@@ -49,7 +49,14 @@ def _render_mini_stepper(status: JobStatus, logs: list) -> str:
         return f'<div class="mini-stepper">{"".join(items)}</div>'
 
     if status == JobStatus.FAILED:
-        failed_stage = logs[-1].stage if logs else "cloning"
+        if not failed_stage and logs:
+            for entry in reversed(logs):
+                if entry.stage in STAGES:
+                    failed_stage = entry.stage
+                    break
+        if not failed_stage:
+            failed_stage = "cloning"
+
         failed_idx = STAGES.index(failed_stage) if failed_stage in STAGES else 0
 
         items = []
@@ -92,7 +99,7 @@ def _render_job_row(job_id: str, job) -> str:
     badge_class = "done" if status == JobStatus.DONE else ("failed" if status == JobStatus.FAILED else "running")
     status_label = status.value
 
-    stepper_html = _render_mini_stepper(status, job.logs)
+    stepper_html = _render_mini_stepper(status, job.logs, getattr(job, "failed_stage", None))
 
     download_btn = ""
     if status == JobStatus.DONE:

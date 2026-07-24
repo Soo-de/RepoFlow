@@ -54,6 +54,7 @@ async def job_stream(job_id: str, cursor: int = 0):
             payload["yaml"] = final_job.result.get("yaml", "")
         if final_job.status == JobStatus.FAILED:
             payload["error"] = final_job.error or "Unknown error"
+            payload["failed_stage"] = final_job.failed_stage or "cloning"
         yield {"event": "complete", "data": json.dumps(payload)}
 
     return EventSourceResponse(event_generator())
