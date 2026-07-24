@@ -19,7 +19,6 @@ def get_git_diff(base_branch: str) -> str:
     diff_text = ""
     try:
         subprocess.run(["git", "fetch", "origin", base_branch], check=True, capture_output=True)
-        # Primary: Triple-dot diff captures all commits since branch point
         result = subprocess.run(
             ["git", "diff", f"origin/{base_branch}...HEAD"],
             capture_output=True,
@@ -63,7 +62,7 @@ def get_git_diff(base_branch: str) -> str:
         except Exception as e:
             print(f"Error computing git log patch: {e}")
 
-    # Fallback 3: Last resort (single commit)
+    # Fallback 3: Single commit show HEAD
     if not diff_text:
         try:
             res = subprocess.run(
@@ -76,27 +75,39 @@ def get_git_diff(base_branch: str) -> str:
         except Exception as e:
             print(f"Error running git show HEAD: {e}")
 
+    # Fallback 4: git log -1 --stat (Guaranteed non-empty string)
+    if not diff_text:
+        try:
+            res = subprocess.run(
+                ["git", "log", "-1", "--stat"],
+                capture_output=True,
+                text=True
+            )
+            if res.returncode == 0:
+                diff_text = res.stdout.strip()
+        except Exception as e:
+            print(f"Error running git log --stat: {e}")
+
     return diff_text[:8000] if len(diff_text) > 8000 else diff_text
 
 
 def generate_ai_summary(diff_text: str, head_branch: str, api_key: str) -> str:
     """Uses Gemini API to generate a structured PR summary from git diff."""
     if not api_key:
-        print("Warning: GEMINI_API_KEY is not set. Using default summary.")
+        print("CRITICAL ERROR: GEMINI_API_KEY secret is missing or empty in GitHub Repository Secrets!")
         return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
 
     if not diff_text:
-        print("Warning: Git diff is empty. Using default summary.")
-        return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
+        diff_text = f"Feature branch '{head_branch}' targeting 'develop'."
 
     prompt = (
         f"You are an expert AI DevOps & Code Reviewer Agent.\n"
-        f"Analyze the following git diff from branch '{head_branch}' targeting 'develop'.\n"
+        f"Analyze the following git diff/commit information from branch '{head_branch}' targeting 'develop'.\n"
         f"Generate a clean, professional Pull Request description in Markdown format including:\n"
         f"1. **Summary of Changes**: 2-3 bullet points.\n"
         f"2. **Key Architectural/Code Updates**: Main functions or files modified.\n"
         f"3. **Verification**: Confirmation that tests passed.\n\n"
-        f"Git Diff:\n{diff_text}"
+        f"Git Diff / Commit Context:\n{diff_text}"
     )
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
@@ -120,14 +131,15 @@ def generate_ai_summary(diff_text: str, head_branch: str, api_key: str) -> str:
                 parts = candidates[0].get('content', {}).get('parts', [])
                 if parts:
                     ai_content = parts[0].get('text', '')
+                    print("SUCCESS: Gemini API returned AI summary successfully.")
                     return f"### 🤖 AI Agent PR Summary\n\n{ai_content}"
-        raise RuntimeError("Empty response from Gemini API")
+        raise RuntimeError("Empty candidates response from Gemini API")
     except urllib.error.HTTPError as e:
         err_detail = e.read().decode('utf-8', errors='replace')
-        print(f"AI Agent Gemini API HTTP Error {e.code}: {err_detail}. Falling back to default summary.")
+        print(f"Gemini API HTTP Error {e.code}: {err_detail}")
         return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
     except Exception as e:
-        print(f"AI Agent API call failed: {e}. Falling back to default summary.")
+        print(f"Gemini API Call Exception: {e}")
         return f"### 🚀 Automated PR for `{head_branch}`\n\n*Code changes ready for merge into `develop`.*"
 
 
