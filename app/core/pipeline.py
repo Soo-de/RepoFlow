@@ -3,10 +3,14 @@ import shutil
 import logging
 from collections.abc import Callable
 
+from app.settings import settings
 from app.core.repo_service import clone, CloneError
 from app.core.repo_analysis import analyze
 from app.core.platform_detect import detect as detect_platform
 from app.core.pipeline_model import PipelineResult
+from app.core.prompt_builder import PromptBuilder
+from app.core.llm_client import LLMClient
+from app.core.validation import PipelineValidator
 
 logger = logging.getLogger(__name__)
 
@@ -44,23 +48,39 @@ async def execute(
             await _report("analyzing", f"Services: {', '.join(analysis.services_needed)}")
         await _report("analyzing", "Analysis complete")
 
-        # --- Stage 3: Generate (stub until Phase 4 — LLM integration) ---
+        # --- Stage 3: Generate ---
         detected_platform = detect_platform(analysis.existing_pipeline_files, platform)
         await _report("generating", f"Target platform: {detected_platform.value}")
-        await _report("generating", "Pipeline generation pending LLM integration")
-        yaml_output = "# placeholder — real generation comes in Phase 4"
+        await _report("generating", "Building LLM prompt template")
 
-        # --- Stage 4: Validate (stub until Phase 4) ---
-        await _report("validating", "Validation pending LLM integration")
-        validation_errors: list[str] = []
-        await _report("validating", "Validation complete")
+        prompt_builder = PromptBuilder()
+        prompt = prompt_builder.build(detected_platform, analysis)
+
+        await _report("generating", "Calling Gemini API to generate pipeline YAML")
+        llm_client = LLMClient(api_key=settings.gemini_api_key)
+        try:
+            raw_yaml_output = await llm_client.generate(prompt)
+        finally:
+            await llm_client.close()
+
+        await _report("generating", "Pipeline generation complete")
+
+        # --- Stage 4: Validate ---
+        await _report("validating", "Validating generated YAML syntax and schema")
+        validator = PipelineValidator()
+        validation_res = validator.validate(detected_platform, raw_yaml_output)
+
+        if validation_res.passed:
+            await _report("validating", "Validation passed successfully")
+        else:
+            await _report("validating", f"Validation found {len(validation_res.errors)} issue(s)")
 
         return PipelineResult.from_analysis(
             analysis=analysis,
             platform=detected_platform,
-            yaml_output=yaml_output,
-            validation_passed=len(validation_errors) == 0,
-            validation_errors=validation_errors,
+            yaml_output=validation_res.cleaned_yaml,
+            validation_passed=validation_res.passed,
+            validation_errors=validation_res.errors,
         )
 
     except CloneError:
@@ -74,4 +94,3 @@ async def execute(
         if workspace and workspace.exists():
             logger.info("Cleaning up workspace %s", workspace)
             shutil.rmtree(workspace, ignore_errors=True)
-
