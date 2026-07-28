@@ -1,45 +1,56 @@
-name: CI
-permissions:
-  contents: read
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-    branches:
-      - main
-      - master
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    name: Test Python Application
+trigger:
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - '**'
+pr:
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - '**'
+stages:
+- stage: CI
+  displayName: CI
+  jobs:
+  - job: Test
+    displayName: Test Job
+    pool:
+      vmImage: ubuntu-latest
+    variables:
+      pythonVersion: 3.11
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Setup Python environment
-        uses: actions/setup-python@v5
-        with:
-          python-version: '>=3.11'
-          cache: 'pip'
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Run test suite
-        run: |
-          pytest --junitxml=junit/test-results.xml
-          echo "### Test Summary" >> $GITHUB_STEP_SUMMARY
-          echo "Total tests run: $(grep 'collected' junit/test-results.xml | awk '{print $3}') tests" >> $GITHUB_STEP_SUMMARY
-          echo "Total tests passed: $(grep 'passed' junit/test-results.xml | awk '{print $3}') tests" >> $GITHUB_STEP_SUMMARY
-          echo "Total tests failed: $(grep 'failures' junit/test-results.xml | awk '{print $3}') tests" >> $GITHUB_STEP_SUMMARY
-          echo "Total tests skipped: $(grep 'skipped' junit/test-results.xml | awk '{print $3}') tests" >> $GITHUB_STEP_SUMMARY
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: junit/test-results.xml
-        if: always()
+    - task: UsePythonVersion@0
+      displayName: Set up Python 3.11
+      inputs:
+        version: $(pythonVersion)
+    - task: Cache@2
+      displayName: Cache Python dependencies
+      inputs:
+        key: python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/pyproject.toml"
+        paths:
+        - '**/$(pythonVersion)/lib/python*/site-packages'
+    - task: Bash@3
+      displayName: Install dependencies
+      inputs:
+        command: bash
+        workingDirectory: $(Build.SourcesDirectory)
+      script: |
+        pip install -e .
+    - task: Bash@3
+      displayName: Run tests
+      inputs:
+        command: bash
+        workingDirectory: $(Build.SourcesDirectory)
+      script: |
+        pytest
+    - task: PublishTestResults@2
+      displayName: Publish test results
+      inputs:
+        testResultsFormat: JUnit
+        testResultsFiles: '**/test-results.xml'
+        testRunTitle: Test Results
+      condition: succeededOrFailed()
