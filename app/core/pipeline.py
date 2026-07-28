@@ -60,9 +60,11 @@ async def execute(
         llm_client = LLMClient(
             gemini_api_key=settings.gemini_api_key,
             groq_api_key=settings.groq_api_key,
+            openai_api_key=settings.openai_api_key,
             provider=settings.llm_provider,
             gemini_model=settings.gemini_model,
             groq_model=settings.groq_model,
+            openai_model=settings.openai_model,
         )
         try:
             raw_yaml_output = await llm_client.generate(prompt)
