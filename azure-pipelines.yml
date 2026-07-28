@@ -24,7 +24,7 @@ stages:
       pythonVersion: '>=3.11'
     steps:
     - task: UsePythonVersion@0
-      displayName: 'Setup Python >=3.11'
+      displayName: 'Set up Python 3.11'
       inputs:
         versionSpec: '$(pythonVersion)'
     - task: Cache@2
@@ -32,9 +32,9 @@ stages:
       inputs:
         key: 'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/pyproject.toml"'
         path: $(Pipeline.Workspace)/.cache
-    - script: pip install -e .
+    - script: pip install -e .[dev]
       displayName: 'Install dependencies'
-    - script: pytest
+    - script: python -m pytest
       displayName: 'Run tests'
     - task: PublishTestResults@2
       displayName: 'Publish test results'
