@@ -14,43 +14,31 @@ pr:
     - '**'
 stages:
 - stage: CI
-  displayName: CI
+  displayName: 'CI'
   jobs:
   - job: Test
-    displayName: Test Job
+    displayName: 'Test'
     pool:
-      vmImage: ubuntu-latest
+      vmImage: 'ubuntu-latest'
     variables:
-      pythonVersion: 3.11
+      pythonVersion: '>=3.11'
     steps:
     - task: UsePythonVersion@0
-      displayName: Set up Python 3.11
+      displayName: 'Setup Python >=3.11'
       inputs:
-        version: $(pythonVersion)
+        versionSpec: '$(pythonVersion)'
     - task: Cache@2
-      displayName: Cache Python dependencies
+      displayName: 'Cache dependencies'
       inputs:
-        key: python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/pyproject.toml"
-        paths:
-        - '**/$(pythonVersion)/lib/python*/site-packages'
-    - task: Bash@3
-      displayName: Install dependencies
-      inputs:
-        command: bash
-        workingDirectory: $(Build.SourcesDirectory)
-      script: |
-        pip install -e .
-    - task: Bash@3
-      displayName: Run tests
-      inputs:
-        command: bash
-        workingDirectory: $(Build.SourcesDirectory)
-      script: |
-        pytest
+        key: 'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/pyproject.toml"'
+        path: $(Pipeline.Workspace)/.cache
+    - script: pip install -e .
+      displayName: 'Install dependencies'
+    - script: pytest
+      displayName: 'Run tests'
     - task: PublishTestResults@2
-      displayName: Publish test results
-      inputs:
-        testResultsFormat: JUnit
-        testResultsFiles: '**/test-results.xml'
-        testRunTitle: Test Results
+      displayName: 'Publish test results'
       condition: succeededOrFailed()
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/test-results.xml'
