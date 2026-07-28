@@ -21,17 +21,17 @@ stages:
     pool:
       vmImage: 'ubuntu-latest'
     variables:
-      pythonVersion: '>=3.11'
+      PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
     steps:
     - task: UsePythonVersion@0
-      displayName: 'Set up Python 3.11'
+      displayName: 'Setup Python 3.11'
       inputs:
-        versionSpec: '$(pythonVersion)'
+        versionSpec: '>=3.11'
     - task: Cache@2
       displayName: 'Cache dependencies'
       inputs:
         key: 'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/pyproject.toml"'
-        path: $(Pipeline.Workspace)/.cache
+        path: $(Pipeline.Workspace)/.pip
     - script: pip install -e .[dev]
       displayName: 'Install dependencies'
     - script: python -m pytest
