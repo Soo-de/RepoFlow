@@ -77,7 +77,7 @@ async def execute(
             cleaned_yaml = strip_markdown_fences(raw_yaml_output)
             is_valid, errors = validator.validate(detected_platform, cleaned_yaml, services_needed=analysis.services_needed)
 
-            max_retries = 5
+            max_retries = 1
             retry_count = 0
 
 
