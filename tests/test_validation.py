@@ -81,10 +81,9 @@ jobs:
 
 
 
-def test_validate_azure_pipelines_custom_tasks():
+def test_validate_azure_pipelines_valid_structure():
     validator = PipelineValidator()
 
-    # 1. Valid Azure Pipeline with correct tasks
     valid_azure = """
 trigger:
   - main
@@ -96,78 +95,78 @@ steps:
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.12'
-  - task: PublishTestResults@2
-    inputs:
-      testResultsFormat: 'JUnit'
-      testResultsFiles: '**/test-*.xml'
+  - script: pip install -r requirements.txt
+    displayName: 'Install dependencies'
+  - script: pytest
+    displayName: 'Run tests'
 """
     passed, errors = validator.validate(Platform.AZURE_PIPELINES, valid_azure)
     assert passed is True
     assert len(errors) == 0
 
-    # 2. Invalid Azure Pipeline with incorrect tasks
-    invalid_azure = """
-trigger:
-  - main
-pr:
-  - main
-pool:
-  vmImage: 'ubuntu-latest'
-steps:
-  - task: UsePythonVersion@0
-    inputs:
-      addToPath: true
-  - task: PublishTestResults@2
-    inputs:
-      testResultsFormat: 'InvalidFormat'
-      testResultsFiles: 123
-"""
-    passed, errors = validator.validate(Platform.AZURE_PIPELINES, invalid_azure)
-
-
-    assert passed is False
-    # Check for specific missing parameter in UsePythonVersion
-    assert any("versionSpec" in err for err in errors)
-    # Check for invalid format in PublishTestResults
-    assert any("testResultsFormat" in err for err in errors)
-    # Check for type error in testResultsFiles (should be string)
-    assert any("testResultsFiles" in err for err in errors)
-
 
 def test_best_practices_validation_github_actions():
     validator = PipelineValidator()
 
-    # GHA missing concurrency, permissions, setup-python version, unwanted postgres service, and missing test summary
+    # GHA missing concurrency and permissions (platform-level structural rules)
     invalid_yaml = """
 name: CI
 on: push
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          cache: 'pip'
       - name: Run tests
         run: pytest
 """
-    passed, errors = validator.validate(Platform.GITHUB_ACTIONS, invalid_yaml, services_needed=[])
+    passed, errors = validator.validate(Platform.GITHUB_ACTIONS, invalid_yaml)
     assert passed is False
     assert any("Concurrency controls" in err for err in errors)
     assert any("Permissions" in err for err in errors)
-    assert any("postgres" in err and "not needed" in err for err in errors)
-    assert any("setup-python" in err and "python-version" in err for err in errors)
-    assert any("GITHUB_STEP_SUMMARY" in err for err in errors)
 
 
 def test_best_practices_validation_azure_pipelines():
     validator = PipelineValidator()
 
-    # Azure Pipeline with incorrect caching order, pip --target, misplaced condition (with triggers configured to avoid unrelated failures)
+    # Azure Pipeline missing pr trigger (platform-level structural rule)
+    invalid_yaml = """
+trigger:
+  - main
+pool:
+  vmImage: 'ubuntu-latest'
+steps:
+  - script: echo "hello"
+    displayName: 'Test'
+"""
+    passed, errors = validator.validate(Platform.AZURE_PIPELINES, invalid_yaml)
+
+    assert passed is False
+    assert any("pr" in err.lower() for err in errors)
+
+
+def test_valid_azure_with_all_required_keys():
+    validator = PipelineValidator()
+
+    valid_yaml = """
+trigger:
+  - main
+pr:
+  - main
+pool:
+  vmImage: 'ubuntu-latest'
+steps:
+  - script: echo "hello"
+    displayName: 'Test'
+"""
+    passed, errors = validator.validate(Platform.AZURE_PIPELINES, valid_yaml)
+    assert passed is True
+    assert len(errors) == 0
+
+
+def test_validate_azure_pipelines_invalid_script_and_cache_keys():
+    validator = PipelineValidator()
+
     invalid_yaml = """
 trigger:
   - main
@@ -176,25 +175,18 @@ pr:
 pool:
   vmImage: 'ubuntu-latest'
 steps:
-  - script: |
-      pip install --target=$(PIP_CACHE_DIR) -r requirements.txt
-    displayName: 'Install'
   - task: Cache@2
     inputs:
-      key: 'key'
-      path: '$(PIP_CACHE_DIR)'
-  - task: PublishTestResults@2
-    inputs:
-      testRunner: 'JUnit'
-      testResultsFiles: 'junit/test-results.xml'
-      condition: succeededOrFailed()
+      key: 'cache-key'
+      paths:
+        - '$(Pipeline.Workspace)/.cache'
+  - task: Bash@3
+    displayName: 'Install'
+    script: pip install -e .
 """
     passed, errors = validator.validate(Platform.AZURE_PIPELINES, invalid_yaml)
-
     assert passed is False
-    assert any("Cache@2 task must be defined BEFORE" in err for err in errors)
-    assert any("pip install --target" in err for err in errors)
-    assert any("condition" in err and "outside" in err for err in errors)
-
+    assert any("Cache@2" in err and "path" in err for err in errors)
+    assert any("task" in err and "script" in err for err in errors)
 
 

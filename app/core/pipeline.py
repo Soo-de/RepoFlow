@@ -42,6 +42,7 @@ async def execute(
         await _report("analyzing", "Analyzing project structure")
         analysis = analyze(repo_dir)
         await _report("analyzing", f"Detected: {analysis.primary_language} ({analysis.dependency_manager})")
+        await _report("analyzing", f"Default branch: {analysis.default_branch}")
         if analysis.test_framework:
             await _report("analyzing", f"Test framework: {analysis.test_framework}")
         if analysis.services_needed:

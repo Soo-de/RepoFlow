@@ -18,35 +18,95 @@ class PythonDetector(BaseDetector):
         return {
             "pyproject.toml": DependencyInfo(
                 manager="pip", language="python",
-                install_command="pip install -r requirements.txt",
+                install_command="pip install -e .",
+                manifest_file="pyproject.toml",
+                cache_path="$(Pipeline.Workspace)/.pip",
+                cache_env_var="PIP_CACHE_DIR",
             ),
             "requirements.txt": DependencyInfo(
                 manager="pip", language="python",
                 install_command="pip install -r requirements.txt",
+                manifest_file="requirements.txt",
+                cache_path="$(Pipeline.Workspace)/.pip",
+                cache_env_var="PIP_CACHE_DIR",
             ),
             "Pipfile": DependencyInfo(
                 manager="pipenv", language="python",
                 install_command="pipenv install",
+                manifest_file="Pipfile",
+                cache_path="$(Pipeline.Workspace)/.pip",
+                cache_env_var="PIP_CACHE_DIR",
             ),
             "poetry.lock": DependencyInfo(
                 manager="poetry", language="python",
                 install_command="poetry install",
+                manifest_file="poetry.lock",
+                cache_path="$(Pipeline.Workspace)/.cache/pypoetry",
             ),
             "uv.lock": DependencyInfo(
                 manager="uv", language="python",
                 install_command="uv sync",
+                manifest_file="uv.lock",
+                cache_path="$(Pipeline.Workspace)/.cache/uv",
+                cache_env_var="UV_CACHE_DIR",
             ),
             "setup.py": DependencyInfo(
                 manager="pip", language="python",
-                install_command="pip install -r requirements.txt",
+                install_command="pip install -e .",
+                manifest_file="setup.py",
+                cache_path="$(Pipeline.Workspace)/.pip",
+                cache_env_var="PIP_CACHE_DIR",
             ),
         }
+
+    def resolve_dependency_info(
+        self, directory: Path, matched_marker: str, base_info: DependencyInfo,
+    ) -> DependencyInfo:
+        """Adjust install command based on which files actually coexist.
+
+        When pyproject.toml or setup.py is matched but requirements.txt
+        also exists, prefer requirements.txt for reproducible CI builds.
+        Checks for optional dev dependencies (e.g., [project.optional-dependencies] dev)
+        to ensure test tools like pytest get installed.
+        """
+        install_cmd = base_info.install_command
+        manifest = base_info.manifest_file or matched_marker
+
+        if matched_marker in ("pyproject.toml", "setup.py"):
+            req_file = directory / "requirements.txt"
+            if req_file.exists():
+                install_cmd = "pip install -r requirements.txt"
+                manifest = "requirements.txt"
+            else:
+                pyproject = directory / "pyproject.toml"
+                if pyproject.exists():
+                    try:
+                        content = pyproject.read_text(encoding="utf-8")
+                        if "[project.optional-dependencies]" in content or "[tool.poetry.group.dev]" in content:
+                            install_cmd = "pip install -e .[dev]"
+                    except OSError:
+                        pass
+        elif matched_marker == "requirements.txt":
+            if (directory / "requirements-dev.txt").exists():
+                install_cmd = "pip install -r requirements.txt -r requirements-dev.txt"
+            elif (directory / "requirements_dev.txt").exists():
+                install_cmd = "pip install -r requirements.txt -r requirements_dev.txt"
+
+        return DependencyInfo(
+            manager=base_info.manager,
+            language=base_info.language,
+            install_command=install_cmd,
+            build_command=base_info.build_command,
+            manifest_file=manifest,
+            cache_path=base_info.cache_path,
+            cache_env_var=base_info.cache_env_var,
+        )
 
     @property
     def test_configs(self) -> dict[str, TestInfo]:
         return {
-            "pytest.ini": TestInfo(framework="pytest", command="pytest"),
-            "setup.cfg": TestInfo(framework="pytest", command="pytest"),
+            "pytest.ini": TestInfo(framework="pytest", command="python -m pytest"),
+            "setup.cfg": TestInfo(framework="pytest", command="python -m pytest"),
             "tox.ini": TestInfo(framework="tox", command="tox"),
         }
 
@@ -92,7 +152,7 @@ class PythonDetector(BaseDetector):
             try:
                 content = pyproject.read_text(encoding="utf-8")
                 if "pytest" in content:
-                    return TestInfo(framework="pytest", command="pytest")
+                    return TestInfo(framework="pytest", command="python -m pytest")
             except OSError:
                 pass
 

@@ -10,6 +10,9 @@ class DependencyInfo:
     language: str
     install_command: str
     build_command: str | None = None
+    manifest_file: str | None = None
+    cache_path: str = "$(Pipeline.Workspace)/.cache"
+    cache_env_var: str | None = None
 
 
 @dataclass
@@ -105,6 +108,18 @@ class BaseDetector(ABC):
         Used by the monorepo detection heuristic.
         """
         return []
+
+    def resolve_dependency_info(
+        self, directory: Path, matched_marker: str, base_info: "DependencyInfo",
+    ) -> "DependencyInfo":
+        """Refine dependency info based on the actual repo context.
+
+        Called after a marker file is matched. The default implementation
+        returns base_info unchanged. Subclasses can override to inspect
+        which combination of files exists and adjust the install/build
+        commands accordingly.
+        """
+        return base_info
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
         """Detect test framework in the given directory.

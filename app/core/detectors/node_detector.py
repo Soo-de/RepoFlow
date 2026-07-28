@@ -24,16 +24,23 @@ class NodeDetector(BaseDetector):
             "package.json": DependencyInfo(
                 manager="npm", language="javascript",
                 install_command="npm ci", build_command="npm run build",
+                manifest_file="package.json",
+                cache_path="$(Pipeline.Workspace)/.npm",
+                cache_env_var="npm_config_cache",
             ),
             "yarn.lock": DependencyInfo(
                 manager="yarn", language="javascript",
                 install_command="yarn install --frozen-lockfile",
                 build_command="yarn build",
+                manifest_file="yarn.lock",
+                cache_path="$(Pipeline.Workspace)/.yarn/cache",
             ),
             "pnpm-lock.yaml": DependencyInfo(
                 manager="pnpm", language="javascript",
                 install_command="pnpm install --frozen-lockfile",
                 build_command="pnpm build",
+                manifest_file="pnpm-lock.yaml",
+                cache_path="$(Pipeline.Workspace)/.pnpm-store",
             ),
         }
 

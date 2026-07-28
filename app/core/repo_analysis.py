@@ -1,4 +1,5 @@
 import logging
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass, field
 
@@ -30,6 +31,9 @@ class RepoAnalysis:
     languages: dict[str, int] = field(default_factory=dict)
     runtime_version: str | None = None
     dependency_manager: str = "unknown"
+    manifest_file: str | None = None
+    cache_path: str = "$(Pipeline.Workspace)/.cache"
+    cache_env_var: str | None = None
     install_command: str = ""
     build_command: str | None = None
     test_framework: str | None = None
@@ -39,6 +43,7 @@ class RepoAnalysis:
     monorepo: bool = False
     existing_pipeline_files: list[str] = field(default_factory=list)
     entry_points: list[str] = field(default_factory=list)
+    default_branch: str = "main"
 
 
 def analyze(repo_dir: Path, registry: DetectorRegistry | None = None) -> RepoAnalysis:
@@ -59,10 +64,11 @@ def analyze(repo_dir: Path, registry: DetectorRegistry | None = None) -> RepoAna
     _detect_entry_points(repo_dir, result, reg)
     _detect_runtime_version(repo_dir, result, reg)
     _detect_monorepo(repo_dir, result, reg)
+    _detect_default_branch(repo_dir, result)
 
     logger.info(
-        "Analysis complete: language=%s, dep_manager=%s, test=%s",
-        result.primary_language, result.dependency_manager, result.test_framework,
+        "Analysis complete: language=%s, dep_manager=%s, manifest=%s, test=%s",
+        result.primary_language, result.dependency_manager, result.manifest_file, result.test_framework,
     )
     return result
 
@@ -99,11 +105,15 @@ def _detect_dependency_manager(
         for detector in registry.detectors:
             for marker_file, dep_info in detector.dependency_markers.items():
                 if (search_dir / marker_file).exists():
-                    result.dependency_manager = dep_info.manager
-                    result.install_command = dep_info.install_command
-                    result.build_command = dep_info.build_command
+                    resolved = detector.resolve_dependency_info(search_dir, marker_file, dep_info)
+                    result.dependency_manager = resolved.manager
+                    result.manifest_file = resolved.manifest_file or marker_file
+                    result.cache_path = resolved.cache_path
+                    result.cache_env_var = resolved.cache_env_var
+                    result.install_command = resolved.install_command
+                    result.build_command = resolved.build_command
                     if result.primary_language == "unknown":
-                        result.primary_language = dep_info.language
+                        result.primary_language = resolved.language
                     return
 
     result.dependency_manager = "unknown"
@@ -243,3 +253,22 @@ def _search_dirs(repo_dir: Path) -> list[Path]:
         if child.is_dir() and child.name not in SKIP_DIRS:
             dirs.append(child)
     return dirs
+
+
+def _detect_default_branch(repo_dir: Path, result: RepoAnalysis) -> None:
+    """Detect the repository's default branch from the cloned checkout.
+
+    After git clone, HEAD points to the default branch. We read it
+    with rev-parse so the generated pipeline triggers on the real branch
+    rather than hardcoding main/master.
+    """
+    try:
+        output = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, cwd=repo_dir, timeout=5,
+        )
+        branch = output.stdout.strip()
+        if branch and output.returncode == 0:
+            result.default_branch = branch
+    except (subprocess.TimeoutExpired, OSError):
+        logger.debug("Could not detect default branch, using fallback 'main'")
