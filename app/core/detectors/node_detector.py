@@ -56,6 +56,37 @@ class NodeDetector(BaseDetector):
             ),
         }
 
+    def resolve_dependency_info(
+        self, directory: Path, matched_marker: str, base_info: DependencyInfo,
+    ) -> DependencyInfo:
+        """Refine install command based on whether package-lock.json exists.
+
+        npm ci strictly requires package-lock.json or npm-shrinkwrap.json.
+        If no lockfile is committed to the repository, fall back to npm install.
+        """
+        install_cmd = base_info.install_command
+        manifest = base_info.manifest_file or matched_marker
+
+        if matched_marker == "package.json":
+            has_lockfile = (directory / "package-lock.json").exists() or (directory / "npm-shrinkwrap.json").exists()
+            if not has_lockfile:
+                install_cmd = "npm install"
+
+        return DependencyInfo(
+            manager=base_info.manager,
+            language=base_info.language,
+            install_command=install_cmd,
+            build_command=base_info.build_command,
+            manifest_file=manifest,
+            working_dir=base_info.working_dir,
+            cache_path=base_info.cache_path,
+            cache_env_var=base_info.cache_env_var,
+            azure_setup_task=base_info.azure_setup_task,
+            azure_version_key=base_info.azure_version_key,
+            github_setup_action=base_info.github_setup_action,
+            github_version_key=base_info.github_version_key,
+        )
+
     @property
     def test_configs(self) -> dict[str, TestInfo]:
         return {
@@ -124,10 +155,12 @@ class NodeDetector(BaseDetector):
     def detect_runtime_version(self, repo_dir: Path) -> str | None:
         import re
 
+        # 1. Check version files like .nvmrc or .node-version
         result = super().detect_runtime_version(repo_dir)
         if result:
             return result.strip().lstrip("v")
 
+        # 2. Check package.json engines.node configuration
         pkg_json = repo_dir / "package.json"
         if pkg_json.exists():
             try:
@@ -141,4 +174,5 @@ class NodeDetector(BaseDetector):
             except Exception:
                 pass
 
-        return None
+        # 3. Fallback to default modern LTS version if no pinned version is specified
+        return "20.x"

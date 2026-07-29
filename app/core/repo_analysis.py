@@ -113,7 +113,14 @@ def _detect_dependency_manager(
             if custom_info:
                 result.dependency_manager = custom_info.manager
                 result.manifest_file = custom_info.manifest_file
-                result.working_dir = custom_info.working_dir
+                # Set working_dir if defined or if search_dir is a subdirectory
+                if custom_info.working_dir:
+                    result.working_dir = custom_info.working_dir
+                elif search_dir != repo_dir:
+                    result.working_dir = search_dir.relative_to(repo_dir).as_posix()
+                else:
+                    result.working_dir = None
+
                 result.cache_path = custom_info.cache_path
                 result.cache_env_var = custom_info.cache_env_var
                 result.azure_setup_task = custom_info.azure_setup_task
@@ -131,8 +138,21 @@ def _detect_dependency_manager(
                 if (search_dir / marker_file).exists():
                     resolved = detector.resolve_dependency_info(search_dir, marker_file, dep_info)
                     result.dependency_manager = resolved.manager
-                    result.manifest_file = resolved.manifest_file or marker_file
-                    result.working_dir = resolved.working_dir
+
+                    # Calculate working_dir for subfolders if not explicitly set
+                    if resolved.working_dir:
+                        result.working_dir = resolved.working_dir
+                    elif search_dir != repo_dir:
+                        result.working_dir = search_dir.relative_to(repo_dir).as_posix()
+                    else:
+                        result.working_dir = None
+
+                    # Format manifest_file with working_dir prefix if nested
+                    if result.working_dir and not (resolved.manifest_file and "/" in resolved.manifest_file):
+                        result.manifest_file = f"{result.working_dir}/{resolved.manifest_file or marker_file}"
+                    else:
+                        result.manifest_file = resolved.manifest_file or marker_file
+
                     result.cache_path = resolved.cache_path
                     result.cache_env_var = resolved.cache_env_var
                     result.azure_setup_task = resolved.azure_setup_task

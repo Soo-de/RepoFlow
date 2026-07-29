@@ -11,13 +11,17 @@ Generate a production-ready .github/workflows/ci.yml GitHub Actions pipeline bas
 {% if analysis.install_command %}- Install Command: {{ analysis.install_command }}{% endif %}
 {% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
 {% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
-{% if analysis.test_command %}- Test Command: {{ analysis.test_command }}{% endif %}
+{% if analysis.test_command %}
+- Test Command: {{ analysis.test_command }}
+{% else %}
+- Test Command: NONE (No test framework detected. Do NOT include any test steps or test jobs.)
+{% endif %}
 {% if analysis.services_needed %}- Required Services: {{ analysis.services_needed | join(', ') }}{% endif %}
 
 OUTPUT RULES:
 1. Output ONLY pure, valid YAML. No markdown fences, no explanations, no surrounding text.
 2. Use the EXACT commands listed above for install, build, and test steps. Do NOT substitute, invent, or modify them.
-3. NEVER invent test commands or test artifact steps if no test command is provided in the analysis.
+3. NEVER invent test commands or test artifact steps if Test Command is NONE.
 
 YAML STRUCTURE:
 The workflow MUST follow this exact structural pattern:
