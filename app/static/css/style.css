@@ -588,6 +588,10 @@ footer {
     background: var(--success);
 }
 
+.step-connector.failed {
+    background: var(--danger);
+}
+
 
 /* ───── Log Panel ───── */
 

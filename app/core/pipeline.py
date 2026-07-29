@@ -10,7 +10,7 @@ from app.core.platform_detect import detect as detect_platform
 from app.core.pipeline_model import PipelineResult
 from app.core.prompt_builder import PromptBuilder
 from app.core.llm_client import LLMClient
-from app.core.validation import PipelineValidator
+from app.core.validation import PipelineValidator, strip_markdown_fences
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ async def execute(
         await _report("analyzing", "Analyzing project structure")
         analysis = analyze(repo_dir)
         await _report("analyzing", f"Detected: {analysis.primary_language} ({analysis.dependency_manager})")
+        await _report("analyzing", f"Default branch: {analysis.default_branch}")
         if analysis.test_framework:
             await _report("analyzing", f"Test framework: {analysis.test_framework}")
         if analysis.services_needed:
@@ -60,34 +61,59 @@ async def execute(
         llm_client = LLMClient(
             gemini_api_key=settings.gemini_api_key,
             groq_api_key=settings.groq_api_key,
+            openai_api_key=settings.openai_api_key,
             provider=settings.llm_provider,
             gemini_model=settings.gemini_model,
             groq_model=settings.groq_model,
+            openai_model=settings.openai_model,
         )
         try:
             raw_yaml_output = await llm_client.generate(prompt)
+            await _report("generating", "Pipeline generation complete")
+
+            # --- Stage 4: Validate and Self-Correct ---
+            await _report("validating", "Validating generated YAML syntax and schema")
+            validator = PipelineValidator()
+
+            cleaned_yaml = strip_markdown_fences(raw_yaml_output)
+            is_valid, errors = validator.validate(detected_platform, cleaned_yaml, services_needed=analysis.services_needed)
+
+            max_retries = 1
+            retry_count = 0
+
+
+            while not is_valid and retry_count < max_retries:
+                retry_count += 1
+                await _report("validating", f"Validation failed: fixing errors (Attempt {retry_count}/{max_retries})")
+
+                correction_prompt = prompt_builder.build_correction(
+                    invalid_yaml=cleaned_yaml,
+                    errors=errors,
+                    platform=detected_platform,
+                    analysis=analysis
+                )
+
+                raw_yaml_output = await llm_client.generate(correction_prompt)
+                cleaned_yaml = strip_markdown_fences(raw_yaml_output)
+
+                is_valid, errors = validator.validate(detected_platform, cleaned_yaml, services_needed=analysis.services_needed)
+
+
+            if is_valid:
+                await _report("validating", "Validation passed successfully")
+            else:
+                await _report("validating", f"Validation found {len(errors)} issue(s)")
+
+            return PipelineResult.from_analysis(
+                analysis=analysis,
+                platform=detected_platform,
+                yaml_output=cleaned_yaml,
+                validation_passed=is_valid,
+                validation_errors=errors,
+            )
         finally:
             await llm_client.close()
 
-        await _report("generating", "Pipeline generation complete")
-
-        # --- Stage 4: Validate ---
-        await _report("validating", "Validating generated YAML syntax and schema")
-        validator = PipelineValidator()
-        validation_res = validator.validate(detected_platform, raw_yaml_output)
-
-        if validation_res.passed:
-            await _report("validating", "Validation passed successfully")
-        else:
-            await _report("validating", f"Validation found {len(validation_res.errors)} issue(s)")
-
-        return PipelineResult.from_analysis(
-            analysis=analysis,
-            platform=detected_platform,
-            yaml_output=validation_res.cleaned_yaml,
-            validation_passed=validation_res.passed,
-            validation_errors=validation_res.errors,
-        )
 
     except CloneError:
         raise

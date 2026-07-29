@@ -1,0 +1,45 @@
+{
+  "github_actions": {
+    "required_root_keys": [
+      {
+        "key": "concurrency",
+        "message": "Concurrency controls ('concurrency:') are missing. Add a concurrency group with cancel-in-progress: true."
+      },
+      {
+        "key": "permissions",
+        "message": "Permissions ('permissions:') are missing at the top level. Add 'permissions: contents: read'."
+      }
+    ]
+  },
+  "azure_pipelines": {
+    "required_root_keys": [
+      {
+        "key": "pr",
+        "message": "Pull request triggers ('pr:') are missing at the top level. Without this, Azure Pipelines will not test PRs automatically."
+      },
+      {
+        "key": "trigger",
+        "message": "Push triggers ('trigger:') are missing at the top level."
+      }
+    ],
+    "step_rules": [
+      {
+        "type": "forbidden_property",
+        "match": {
+          "key": "task"
+        },
+        "forbidden_property": "script",
+        "message": "A step using 'task:' cannot also have a top-level 'script:' property. Use standard '- script: <command>' for shell steps."
+      },
+      {
+        "type": "forbidden_input_property",
+        "match": {
+          "key": "task",
+          "starts_with": "cache@2"
+        },
+        "forbidden_property": "paths",
+        "message": "Task 'Cache@2' uses input parameter 'path:' (string), NOT 'paths:' (sequence/list)."
+      }
+    ]
+  }
+}

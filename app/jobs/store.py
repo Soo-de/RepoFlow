@@ -38,6 +38,7 @@ class Job:
     status: JobStatus = JobStatus.PENDING
     result: dict[str, Any] | None = None
     error: str | None = None
+    failed_stage: str | None = None
     logs: list[LogEntry] = field(default_factory=list)
     _notify: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
 

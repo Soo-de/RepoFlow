@@ -1,38 +1,140 @@
 You are an expert DevOps engineer specializing in Azure Pipelines CI/CD workflows.
 
-Generate a production-ready, modular, secure, and clean multi-stage `azure-pipelines.yml` pipeline based on the following project analysis:
+Generate a production-ready azure-pipelines.yml CI pipeline based on the following project analysis:
 
 - Primary Language: {{ analysis.primary_language }}
-{% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
-{% if analysis.dependency_manager %}- Dependency Manager: {{ analysis.dependency_manager }}{% endif %}
-{% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
-{% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
-{% if analysis.test_command %}- Test Command: {{ analysis.test_command }}{% endif %}
-{% if analysis.services_needed %}- Required Services (e.g. databases/caches): {{ analysis.services_needed | join(', ') }}{% endif %}
-{% if analysis.has_dockerfile %}- Has Dockerfile: Yes{% endif %}
+- Default Branch: {{ analysis.default_branch }}
+{% if analysis.runtime_version %}
+- Runtime/Language Version: {{ analysis.runtime_version }}
+{% endif %}
+{% if analysis.manifest_file %}
+- Manifest File: {{ analysis.manifest_file }}
+{% endif %}
+- Dependency Manager: {{ analysis.dependency_manager }}
+{% if analysis.working_dir %}
+- Working Directory: {{ analysis.working_dir }}
+{% endif %}
+{% if analysis.install_command %}
+- Install Command: {{ analysis.install_command }}
+{% endif %}
+{% if analysis.build_command %}
+- Build Command: {{ analysis.build_command }}
+{% endif %}
+{% if analysis.test_framework %}
+- Test Framework: {{ analysis.test_framework }}
+{% endif %}
+{% if analysis.test_command %}
+- Test Command: {{ analysis.test_command }}
+{% else %}
+- Test Command: NONE (No test framework detected. Do NOT include any test steps or test jobs.)
+{% endif %}
+{% if analysis.services_needed %}
+- Required Services: {{ analysis.services_needed | join(', ') }}
+{% endif %}
+
+OUTPUT RULES:
+1. Output ONLY pure, valid YAML. No markdown fences, no explanations, no surrounding text.
+2. Use the EXACT commands listed above for install, build, and test steps. Do NOT substitute, invent, or modify them.
+3. NEVER invent test commands or test publishing tasks if Test Command is NONE.
+
+YAML STRUCTURE:
+The pipeline MUST follow this exact structural pattern. `trigger:` and `pr:` MUST be mappings (do NOT put a hyphen `-` before `branches:`).
+
+trigger:
+  branches:
+    include:
+    - {{ analysis.default_branch }}
+  paths:
+    include:
+    - '**'
+pr:
+  branches:
+    include:
+    - {{ analysis.default_branch }}
+  paths:
+    include:
+    - '**'
+stages:
+- stage: CI
+  displayName: 'CI'
+  jobs:
+  - job: <JobName>
+    displayName: '<DisplayName>'
+    pool:
+      vmImage: 'ubuntu-latest'
+    variables:
+{% if analysis.cache_env_var %}
+      {{ analysis.cache_env_var }}: {{ analysis.cache_path }}
+{% endif %}
+    steps:
+      <steps go here>
+
+JOB ORGANIZATION:
+{% if analysis.build_command and analysis.test_command %}
+Use TWO jobs inside the CI stage:
+  1. A "Build" job containing the applicable setup, cache, install, and build steps listed below.
+  2. A "Test" job (dependsOn: Build) containing the applicable setup, cache, install, test, and publish steps listed below.
+{% elif analysis.build_command %}
+Use a SINGLE job named "Build" containing the applicable setup, cache, install, and build steps listed below. Do NOT include any test steps.
+{% elif analysis.test_command %}
+Use a SINGLE job named "Test" containing the applicable setup, cache, install, test, and publish steps listed below.
+{% else %}
+Use a SINGLE job named "CI" containing the applicable setup, cache, and install steps listed below.
+{% endif %}
+
+STEP SYNTAX & RULES (in order within each job):
+{% if analysis.azure_setup_task %}
+a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ analysis.azure_setup_task }}`{% if analysis.runtime_version %} with inputs `{{ analysis.azure_version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Do NOT use echo commands for runtime setup.
+{% endif %}
+{% if analysis.manifest_file and analysis.cache_path %}
+b. Cache dependencies using `Cache@2` BEFORE the install step.
+   IMPORTANT for `Cache@2`: Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
+   Example:
+   - task: Cache@2
+     displayName: 'Cache dependencies'
+     inputs:
+       key: '{{ analysis.primary_language }} | "$(Agent.OS)" | "$(Build.SourcesDirectory)/{{ analysis.manifest_file }}"'
+       path: {{ analysis.cache_path }}
+{% endif %}
+{% if analysis.install_command %}
+c. Install dependencies using a simple `- script:` step:
+   - script: {{ analysis.install_command }}
+{% if analysis.working_dir %}
+     workingDirectory: {{ analysis.working_dir }}
+{% endif %}
+     displayName: 'Install dependencies'
+{% endif %}
+{% if analysis.build_command %}
+d. Build using a simple `- script:` step:
+   - script: {{ analysis.build_command }}
+{% if analysis.working_dir %}
+     workingDirectory: {{ analysis.working_dir }}
+{% endif %}
+     displayName: 'Build'
+{% endif %}
+{% if analysis.test_command %}
+e. Run tests using a simple `- script:` step:
+   - script: {{ analysis.test_command }}
+{% if analysis.working_dir %}
+     workingDirectory: {{ analysis.working_dir }}
+{% endif %}
+     displayName: 'Run tests'
+f. Publish test results using `PublishTestResults@2` with:
+   - `testResultsFormat: 'JUnit'` (or `'VSTest'` if C# / .NET)
+   - `testResultsFiles: '**/test-results.xml'` (or `'**/*.trx'` if C# / .NET)
+   - `condition: succeededOrFailed()` at the STEP level (outside inputs)
+{% endif %}
 
 CRITICAL RULES:
-1. Output ONLY pure, valid YAML content. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
-2. Structure & Hierarchy:
-   - Use a multi-stage architecture (`stages:` -> `stage:` -> `jobs:` -> `job:` -> `steps:`).
-   - Stage 1: `Test` (Runs environment setup, dependency caching, installation, testing, and test result publishing).
-   - Stage 2: `Build` (Runs artifact/container build and push operations; MUST include `dependsOn: Test` and `condition: succeeded()`).
-3. Branch Triggers:
-   - Define `trigger` for default branches (`main`, `master`).
-4. Modern Execution Standards & Task Best Practices:
-   - NEVER use legacy or obsolete Azure tasks such as `PythonPackage@0` or `Python@0`. Use standard, transparent `script:` steps invoking native CLI commands.
-   - Run python projects in a deterministic locked environment: always include `UsePythonVersion@0` (e.g. specifying the version using a variable like `PYTHON_VERSION: '{{ analysis.runtime_version if analysis.runtime_version else "3.10" }}'`) before executing pip/pytest steps.
-   - Caching (`Cache@2`): Point `path` to actual package cache directories (e.g., `$(Pipeline.Workspace)/.pip` for Python with `PIP_CACHE_DIR` variable set, or `~/.npm` for Node.js), NOT requirements/manifest files. ALWAYS wrap filename/manifest paths in double quotes in the `key:` parameter (e.g., `'python | "$(Agent.OS)" | "$(Build.SourcesDirectory)/requirements.txt"'` or `'npm | "$(Agent.OS)" | "$(Build.SourcesDirectory)/package-lock.json"'`) so Azure Pipelines computes a SHA256 content hash of the file rather than using a literal string.
-   - Test Execution & Reporting:
-     - Run tests via CLI (`{% if analysis.test_command %}{{ analysis.test_command }}{% else %}pytest{% endif %}`).
-     - For Python suites using pytest, run `pytest --junitxml=junit/test-results.xml` and publish results with `PublishTestResults@2` using `testRunner: 'JUnit'` and `condition: succeededOrFailed()`.
-5. Docker Container Step (If Dockerfile present):
-   - Use `Docker@2` task with `command: 'buildAndPush'`.
-   - Use absolute workspace variables: `Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'` (or the appropriate relative path to the Dockerfile in the project) and `buildContext: '$(Build.SourcesDirectory)'`. Never use glob patterns like `**` for `buildContext`.
-   - Tags: Always include both `$(Build.BuildId)` and `latest`.
-   - Registry & Auth: For `containerRegistry`, use a generic placeholder like `<YOUR_AZURE_DEVOPS_SERVICE_CONNECTION_NAME>`.
-   - Condition: Add `condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))` to prevent unintended image pushes during PR validation builds.
-6. Cleanliness & Readability:
-   - Include clear, helpful stage and step `displayName` attributes and short explanatory comments.
-   - Keep the YAML clean, DRY, and modular.
-
+- Include ONLY steps for which specific commands or tasks are defined above.
+- If Working Directory is specified above, add `workingDirectory: <Working Directory>` to each `- script:` step (install, build, test).
+- Do NOT generate dummy steps, `echo` commands, or placeholder steps if runtime setup or caching is omitted above.
+- Do NOT generate duplicate steps or duplicate commands. If no install command is provided, do NOT generate an install step.
+- Do NOT use `task: Bash@3` or `task: CmdLine@2` for executing shell commands. ALWAYS use standard `- script: <command>` steps.
+- NEVER mix `task:` and `script:` in the same step.
+- Do NOT use `paths:` under `Cache@2` inputs. `Cache@2` only accepts `path:` as a single string.
+- Do NOT include a top-level `concurrency:` block.
+- Do NOT put hyphens before `branches:` in `trigger:` or `pr:`.
+- Do NOT generate test steps or PublishTestResults unless a Test Command is explicitly provided above.
+- Every step must have a clear `displayName`.
+- Keep the YAML clean, minimal, and production-ready.
