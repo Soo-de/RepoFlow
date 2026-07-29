@@ -10,6 +10,14 @@ class DependencyInfo:
     language: str
     install_command: str
     build_command: str | None = None
+    manifest_file: str | None = None
+    working_dir: str | None = None
+    cache_path: str | None = None
+    cache_env_var: str | None = None
+    azure_setup_task: str | None = None
+    azure_version_key: str | None = None
+    github_setup_action: str | None = None
+    github_version_key: str | None = None
 
 
 @dataclass
@@ -105,6 +113,26 @@ class BaseDetector(ABC):
         Used by the monorepo detection heuristic.
         """
         return []
+
+    def detect_dependency_info(self, directory: Path) -> DependencyInfo | None:
+        """Custom hook for detectors that use dynamic pattern matching (e.g. .csproj/.sln).
+
+        Subclasses can override to dynamically search for manifest files
+        (e.g., rglob for .csproj or .sln files in nested subdirectories).
+        """
+        return None
+
+    def resolve_dependency_info(
+        self, directory: Path, matched_marker: str, base_info: "DependencyInfo",
+    ) -> "DependencyInfo":
+        """Refine dependency info based on the actual repo context.
+
+        Called after a marker file is matched. The default implementation
+        returns base_info unchanged. Subclasses can override to inspect
+        which combination of files exists and adjust the install/build
+        commands accordingly.
+        """
+        return base_info
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
         """Detect test framework in the given directory.

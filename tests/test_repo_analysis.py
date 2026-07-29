@@ -51,3 +51,58 @@ def test_analyze_dockerfile_and_ci_configs(tmp_path):
 
     assert analysis.has_dockerfile is True
     assert ".github/workflows/ci.yml" in analysis.existing_pipeline_files
+
+
+def test_analyze_csharp_project_with_sln(tmp_path):
+    (tmp_path / "App.sln").write_text("Microsoft Visual Studio Solution File, Format Version 12.00", encoding="utf-8")
+    subfolder = tmp_path / "WebApi"
+    subfolder.mkdir()
+    (subfolder / "WebApi.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>', encoding="utf-8")
+    (subfolder / "Program.cs").write_text("var builder = WebApplication.CreateBuilder(args);", encoding="utf-8")
+
+    analysis = analyze(tmp_path)
+
+    assert analysis.primary_language == "csharp"
+    assert analysis.dependency_manager == "dotnet"
+    assert analysis.runtime_version == "10.0.x"
+    assert analysis.install_command == "dotnet restore App.sln"
+    assert analysis.build_command == "dotnet build App.sln --configuration Release --no-restore"
+
+
+def test_analyze_csharp_project_nested_without_sln(tmp_path):
+    subfolder = tmp_path / "WebApi"
+    subfolder.mkdir()
+    (subfolder / "WebApi.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>', encoding="utf-8")
+    (subfolder / "Program.cs").write_text("var builder = WebApplication.CreateBuilder(args);", encoding="utf-8")
+
+    analysis = analyze(tmp_path)
+
+    assert analysis.primary_language == "csharp"
+    assert analysis.working_dir == "WebApi"
+    assert analysis.install_command == "dotnet restore WebApi.csproj"
+    assert analysis.build_command == "dotnet build WebApi.csproj --configuration Release --no-restore"
+
+
+def test_analyze_csharp_project_with_slnx(tmp_path):
+    (tmp_path / "App.slnx").write_text('<Solution></Solution>', encoding="utf-8")
+    subfolder = tmp_path / "WebApi"
+    subfolder.mkdir()
+    (subfolder / "WebApi.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>', encoding="utf-8")
+    (subfolder / "Program.cs").write_text("var builder = WebApplication.CreateBuilder(args);", encoding="utf-8")
+
+    analysis = analyze(tmp_path)
+
+    assert analysis.primary_language == "csharp"
+    assert analysis.dependency_manager == "dotnet"
+    assert analysis.manifest_file == "WebApi/WebApi.csproj"
+    assert analysis.working_dir == "WebApi"
+    assert analysis.install_command == "dotnet restore WebApi.csproj"
+    assert analysis.build_command == "dotnet build WebApi.csproj --configuration Release --no-restore"
+
+
+
+
+
+
+
+

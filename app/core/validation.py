@@ -155,6 +155,10 @@ def check_step_rules(steps: list[dict], rules: list[dict], line_map: dict[int, i
                     inputs_line = line_map.get(id(inputs), step_line)
                     errors.append(f"Validation Error [line {inputs_line}]: {rule['message']}")
 
+            elif rule_type == "forbidden_property":
+                if rule["forbidden_property"] in step:
+                    errors.append(f"Validation Error [line {step_line}]: {rule['message']}")
+
             elif rule_type == "allowed_values":
                 target = step
                 missing = False

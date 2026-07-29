@@ -69,6 +69,31 @@ async def test_llm_client_groq_success():
 
 
 @pytest.mark.asyncio
+async def test_llm_client_openai_success():
+    client = LLMClient(openai_api_key="openai_key", provider="openai")
+
+    mock_response_json = {
+        "choices": [
+            {
+                "message": {"content": "name: CI\non: push\njobs: {}"}
+            }
+        ]
+    }
+
+    mock_httpx_response = MagicMock()
+    mock_httpx_response.status_code = 200
+    mock_httpx_response.raise_for_status = MagicMock()
+    mock_httpx_response.json = MagicMock(return_value=mock_response_json)
+
+    with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_httpx_response
+        res = await client.generate("Generate workflow")
+        assert res == "name: CI\non: push\njobs: {}"
+
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_llm_client_fallback_from_gemini_429_to_groq():
     client = LLMClient(
         gemini_api_key="gemini_key",
@@ -113,8 +138,12 @@ async def test_pipeline_execute_self_correction():
     # Mock settings to have API keys
     with patch("app.core.pipeline.settings") as mock_settings:
         mock_settings.gemini_api_key = "test_key"
+        mock_settings.groq_api_key = ""
+        mock_settings.openai_api_key = ""
         mock_settings.llm_provider = "gemini"
         mock_settings.gemini_model = "gemini-1.5-flash"
+        mock_settings.groq_model = "llama-3.3-70b-versatile"
+        mock_settings.openai_model = "gpt-4o-mini"
 
         # Mock core services so we do not actually clone or analyze a repo
         with patch("app.core.pipeline.clone", new_callable=AsyncMock) as mock_clone, \

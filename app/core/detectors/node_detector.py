@@ -24,16 +24,35 @@ class NodeDetector(BaseDetector):
             "package.json": DependencyInfo(
                 manager="npm", language="javascript",
                 install_command="npm ci", build_command="npm run build",
+                manifest_file="package.json",
+                cache_path="$(Pipeline.Workspace)/.npm",
+                cache_env_var="npm_config_cache",
+                azure_setup_task="NodeTool@0",
+                azure_version_key="versionSpec",
+                github_setup_action="actions/setup-node@v4",
+                github_version_key="node-version",
             ),
             "yarn.lock": DependencyInfo(
                 manager="yarn", language="javascript",
                 install_command="yarn install --frozen-lockfile",
                 build_command="yarn build",
+                manifest_file="yarn.lock",
+                cache_path="$(Pipeline.Workspace)/.yarn/cache",
+                azure_setup_task="NodeTool@0",
+                azure_version_key="versionSpec",
+                github_setup_action="actions/setup-node@v4",
+                github_version_key="node-version",
             ),
             "pnpm-lock.yaml": DependencyInfo(
                 manager="pnpm", language="javascript",
                 install_command="pnpm install --frozen-lockfile",
                 build_command="pnpm build",
+                manifest_file="pnpm-lock.yaml",
+                cache_path="$(Pipeline.Workspace)/.pnpm-store",
+                azure_setup_task="NodeTool@0",
+                azure_version_key="versionSpec",
+                github_setup_action="actions/setup-node@v4",
+                github_version_key="node-version",
             ),
         }
 
@@ -98,6 +117,28 @@ class NodeDetector(BaseDetector):
                         return TestInfo(framework="mocha", command="npm test")
                     return TestInfo(framework=None, command="npm test")
             except OSError:
+                pass
+
+        return None
+
+    def detect_runtime_version(self, repo_dir: Path) -> str | None:
+        import re
+
+        result = super().detect_runtime_version(repo_dir)
+        if result:
+            return result.strip().lstrip("v")
+
+        pkg_json = repo_dir / "package.json"
+        if pkg_json.exists():
+            try:
+                import json
+                data = json.loads(pkg_json.read_text(encoding="utf-8"))
+                node_engine = data.get("engines", {}).get("node")
+                if node_engine:
+                    match = re.search(r"(\d+(?:\.\d+)*)", node_engine)
+                    if match:
+                        return match.group(1)
+            except Exception:
                 pass
 
         return None

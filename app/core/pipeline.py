@@ -42,6 +42,7 @@ async def execute(
         await _report("analyzing", "Analyzing project structure")
         analysis = analyze(repo_dir)
         await _report("analyzing", f"Detected: {analysis.primary_language} ({analysis.dependency_manager})")
+        await _report("analyzing", f"Default branch: {analysis.default_branch}")
         if analysis.test_framework:
             await _report("analyzing", f"Test framework: {analysis.test_framework}")
         if analysis.services_needed:
@@ -60,9 +61,11 @@ async def execute(
         llm_client = LLMClient(
             gemini_api_key=settings.gemini_api_key,
             groq_api_key=settings.groq_api_key,
+            openai_api_key=settings.openai_api_key,
             provider=settings.llm_provider,
             gemini_model=settings.gemini_model,
             groq_model=settings.groq_model,
+            openai_model=settings.openai_model,
         )
         try:
             raw_yaml_output = await llm_client.generate(prompt)
@@ -75,7 +78,7 @@ async def execute(
             cleaned_yaml = strip_markdown_fences(raw_yaml_output)
             is_valid, errors = validator.validate(detected_platform, cleaned_yaml, services_needed=analysis.services_needed)
 
-            max_retries = 5
+            max_retries = 1
             retry_count = 0
 
 

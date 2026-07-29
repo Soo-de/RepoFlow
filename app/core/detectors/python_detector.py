@@ -15,38 +15,110 @@ class PythonDetector(BaseDetector):
 
     @property
     def dependency_markers(self) -> dict[str, DependencyInfo]:
+        setup_kwargs = {
+            "azure_setup_task": "UsePythonVersion@0",
+            "azure_version_key": "versionSpec",
+            "github_setup_action": "actions/setup-python@v5",
+            "github_version_key": "python-version",
+        }
         return {
             "pyproject.toml": DependencyInfo(
                 manager="pip", language="python",
-                install_command="pip install -r requirements.txt",
+                install_command="pip install -e .",
+                manifest_file="pyproject.toml",
+                cache_path="$(Pipeline.Workspace)/.pip",
+                cache_env_var="PIP_CACHE_DIR",
+                **setup_kwargs,
             ),
             "requirements.txt": DependencyInfo(
                 manager="pip", language="python",
                 install_command="pip install -r requirements.txt",
+                manifest_file="requirements.txt",
+                cache_path="$(Pipeline.Workspace)/.pip",
+                cache_env_var="PIP_CACHE_DIR",
+                **setup_kwargs,
             ),
             "Pipfile": DependencyInfo(
                 manager="pipenv", language="python",
                 install_command="pipenv install",
+                manifest_file="Pipfile",
+                cache_path="$(Pipeline.Workspace)/.pip",
+                cache_env_var="PIP_CACHE_DIR",
+                **setup_kwargs,
             ),
             "poetry.lock": DependencyInfo(
                 manager="poetry", language="python",
                 install_command="poetry install",
+                manifest_file="poetry.lock",
+                cache_path="$(Pipeline.Workspace)/.cache/pypoetry",
+                **setup_kwargs,
             ),
             "uv.lock": DependencyInfo(
                 manager="uv", language="python",
                 install_command="uv sync",
+                manifest_file="uv.lock",
+                cache_path="$(Pipeline.Workspace)/.cache/uv",
+                cache_env_var="UV_CACHE_DIR",
+                **setup_kwargs,
             ),
             "setup.py": DependencyInfo(
                 manager="pip", language="python",
-                install_command="pip install -r requirements.txt",
+                install_command="pip install -e .",
+                manifest_file="setup.py",
+                cache_path="$(Pipeline.Workspace)/.pip",
+                cache_env_var="PIP_CACHE_DIR",
+                **setup_kwargs,
             ),
         }
+
+    def resolve_dependency_info(
+        self, directory: Path, matched_marker: str, base_info: DependencyInfo,
+    ) -> DependencyInfo:
+        """Adjust install command based on which files actually coexist.
+
+        When pyproject.toml or setup.py is matched but requirements.txt
+        also exists, prefer requirements.txt for reproducible CI builds.
+        Checks for optional dev dependencies (e.g., [project.optional-dependencies] dev)
+        to ensure test tools like pytest get installed.
+        """
+        install_cmd = base_info.install_command
+        manifest = base_info.manifest_file or matched_marker
+
+        if matched_marker in ("pyproject.toml", "setup.py"):
+            req_file = directory / "requirements.txt"
+            if req_file.exists():
+                install_cmd = "pip install -r requirements.txt"
+                manifest = "requirements.txt"
+            else:
+                pyproject = directory / "pyproject.toml"
+                if pyproject.exists():
+                    try:
+                        content = pyproject.read_text(encoding="utf-8")
+                        if "[project.optional-dependencies]" in content or "[tool.poetry.group.dev]" in content:
+                            install_cmd = "pip install -e .[dev]"
+                    except OSError:
+                        pass
+        elif matched_marker == "requirements.txt":
+            if (directory / "requirements-dev.txt").exists():
+                install_cmd = "pip install -r requirements.txt -r requirements-dev.txt"
+            elif (directory / "requirements_dev.txt").exists():
+                install_cmd = "pip install -r requirements.txt -r requirements_dev.txt"
+
+        return DependencyInfo(
+            manager=base_info.manager,
+            language=base_info.language,
+            install_command=install_cmd,
+            build_command=base_info.build_command,
+            manifest_file=manifest,
+            cache_path=base_info.cache_path,
+            cache_env_var=base_info.cache_env_var,
+        )
 
     @property
     def test_configs(self) -> dict[str, TestInfo]:
         return {
-            "pytest.ini": TestInfo(framework="pytest", command="pytest"),
-            "setup.cfg": TestInfo(framework="pytest", command="pytest"),
+            "pytest.ini": TestInfo(framework="pytest", command="python -m pytest"),
+            "setup.cfg": TestInfo(framework="pytest", command="python -m pytest"),
             "tox.ini": TestInfo(framework="tox", command="tox"),
         }
 
@@ -86,33 +158,70 @@ class PythonDetector(BaseDetector):
         if result:
             return result
 
+        # Check for tests/ or test/ directories
+        if (directory / "tests").is_dir():
+            return TestInfo(framework="pytest", command="python -m pytest tests")
+        if (directory / "test").is_dir():
+            return TestInfo(framework="pytest", command="python -m pytest test")
+
         # Fall back to parsing pyproject.toml for pytest references
         pyproject = directory / "pyproject.toml"
         if pyproject.exists():
             try:
                 content = pyproject.read_text(encoding="utf-8")
-                if "pytest" in content:
-                    return TestInfo(framework="pytest", command="pytest")
+                if "pytest" in content or "unittest" in content:
+                    return TestInfo(framework="pytest", command="python -m pytest")
             except OSError:
                 pass
+
+        # Check for test_*.py or *_test.py files
+        for pattern in ("test_*.py", "*_test.py"):
+            for match in directory.rglob(pattern):
+                if not any(skip in match.parts for skip in ("SKIP_DIRS", ".git", "node_modules", ".venv", "venv")):
+                    return TestInfo(framework="pytest", command="python -m pytest")
 
         return None
 
     def detect_runtime_version(self, repo_dir: Path) -> str | None:
-        # Check .python-version file first
+        import re
+
+        # 1. Check .python-version file first
         result = super().detect_runtime_version(repo_dir)
         if result:
-            return result
+            return result.strip()
 
-        # Fall back to parsing requires-python from pyproject.toml
+        # 2. Check runtime.txt (e.g. python-3.11.4 -> 3.11)
+        runtime_txt = repo_dir / "runtime.txt"
+        if runtime_txt.exists():
+            try:
+                content = runtime_txt.read_text(encoding="utf-8").strip()
+                match = re.search(r"(\d+\.\d+)", content)
+                if match:
+                    return match.group(1)
+            except OSError:
+                pass
+
+        # 3. Check pyproject.toml
         pyproject = repo_dir / "pyproject.toml"
         if pyproject.exists():
             try:
                 content = pyproject.read_text(encoding="utf-8")
                 for line in content.splitlines():
                     if "requires-python" in line and "=" in line:
-                        version = line.split("=", 1)[1].strip().strip('"').strip("'")
-                        return version
+                        match = re.search(r"(\d+\.\d+)", line)
+                        if match:
+                            return match.group(1)
+            except OSError:
+                pass
+
+        # 4. Check Pipfile
+        pipfile = repo_dir / "Pipfile"
+        if pipfile.exists():
+            try:
+                content = pipfile.read_text(encoding="utf-8")
+                match = re.search(r'python_version\s*=\s*["\'](\d+\.\d+)["\']', content)
+                if match:
+                    return match.group(1)
             except OSError:
                 pass
 
