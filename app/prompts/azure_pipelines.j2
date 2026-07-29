@@ -25,6 +25,8 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 {% endif %}
 {% if analysis.test_command %}
 - Test Command: {{ analysis.test_command }}
+{% else %}
+- Test Command: NONE (No test framework detected. Do NOT include any test steps or test jobs.)
 {% endif %}
 {% if analysis.services_needed %}
 - Required Services: {{ analysis.services_needed | join(', ') }}
@@ -33,7 +35,7 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 OUTPUT RULES:
 1. Output ONLY pure, valid YAML. No markdown fences, no explanations, no surrounding text.
 2. Use the EXACT commands listed above for install, build, and test steps. Do NOT substitute, invent, or modify them.
-3. NEVER invent test commands or test publishing tasks if no test command is provided in the analysis.
+3. NEVER invent test commands or test publishing tasks if Test Command is NONE.
 
 YAML STRUCTURE:
 The pipeline MUST follow this exact structural pattern. `trigger:` and `pr:` MUST be mappings (do NOT put a hyphen `-` before `branches:`).
