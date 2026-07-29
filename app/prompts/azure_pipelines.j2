@@ -4,14 +4,31 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 
 - Primary Language: {{ analysis.primary_language }}
 - Default Branch: {{ analysis.default_branch }}
-{% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
-{% if analysis.manifest_file %}- Manifest File: {{ analysis.manifest_file }}{% endif %}
+{% if analysis.runtime_version %}
+- Runtime/Language Version: {{ analysis.runtime_version }}
+{% endif %}
+{% if analysis.manifest_file %}
+- Manifest File: {{ analysis.manifest_file }}
+{% endif %}
 - Dependency Manager: {{ analysis.dependency_manager }}
-{% if analysis.install_command %}- Install Command: {{ analysis.install_command }}{% endif %}
-{% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
-{% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
-{% if analysis.test_command %}- Test Command: {{ analysis.test_command }}{% endif %}
-{% if analysis.services_needed %}- Required Services: {{ analysis.services_needed | join(', ') }}{% endif %}
+{% if analysis.working_dir %}
+- Working Directory: {{ analysis.working_dir }}
+{% endif %}
+{% if analysis.install_command %}
+- Install Command: {{ analysis.install_command }}
+{% endif %}
+{% if analysis.build_command %}
+- Build Command: {{ analysis.build_command }}
+{% endif %}
+{% if analysis.test_framework %}
+- Test Framework: {{ analysis.test_framework }}
+{% endif %}
+{% if analysis.test_command %}
+- Test Command: {{ analysis.test_command }}
+{% endif %}
+{% if analysis.services_needed %}
+- Required Services: {{ analysis.services_needed | join(', ') }}
+{% endif %}
 
 OUTPUT RULES:
 1. Output ONLY pure, valid YAML. No markdown fences, no explanations, no surrounding text.
@@ -64,8 +81,11 @@ Use a SINGLE job named "CI" containing the applicable setup, cache, and install 
 {% endif %}
 
 STEP SYNTAX & RULES (in order within each job):
-{% if analysis.azure_setup_task %}a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ analysis.azure_setup_task }}`{% if analysis.runtime_version %} with inputs `{{ analysis.azure_version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Do NOT use echo commands for runtime setup.{% endif %}
-{% if analysis.manifest_file and analysis.cache_path %}b. Cache dependencies using `Cache@2` BEFORE the install step.
+{% if analysis.azure_setup_task %}
+a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ analysis.azure_setup_task }}`{% if analysis.runtime_version %} with inputs `{{ analysis.azure_version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Do NOT use echo commands for runtime setup.
+{% endif %}
+{% if analysis.manifest_file and analysis.cache_path %}
+b. Cache dependencies using `Cache@2` BEFORE the install step.
    IMPORTANT for `Cache@2`: Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
    Example:
    - task: Cache@2
@@ -74,22 +94,38 @@ STEP SYNTAX & RULES (in order within each job):
        key: '{{ analysis.primary_language }} | "$(Agent.OS)" | "$(Build.SourcesDirectory)/{{ analysis.manifest_file }}"'
        path: {{ analysis.cache_path }}
 {% endif %}
-{% if analysis.install_command %}c. Install dependencies using a simple `- script:` step:
+{% if analysis.install_command %}
+c. Install dependencies using a simple `- script:` step:
    - script: {{ analysis.install_command }}
-     displayName: 'Install dependencies'{% endif %}
-{% if analysis.build_command %}d. Build using a simple `- script:` step:
+{% if analysis.working_dir %}
+     workingDirectory: {{ analysis.working_dir }}
+{% endif %}
+     displayName: 'Install dependencies'
+{% endif %}
+{% if analysis.build_command %}
+d. Build using a simple `- script:` step:
    - script: {{ analysis.build_command }}
-     displayName: 'Build'{% endif %}
-{% if analysis.test_command %}e. Run tests using a simple `- script:` step:
+{% if analysis.working_dir %}
+     workingDirectory: {{ analysis.working_dir }}
+{% endif %}
+     displayName: 'Build'
+{% endif %}
+{% if analysis.test_command %}
+e. Run tests using a simple `- script:` step:
    - script: {{ analysis.test_command }}
+{% if analysis.working_dir %}
+     workingDirectory: {{ analysis.working_dir }}
+{% endif %}
      displayName: 'Run tests'
 f. Publish test results using `PublishTestResults@2` with:
    - `testResultsFormat: 'JUnit'` (or `'VSTest'` if C# / .NET)
    - `testResultsFiles: '**/test-results.xml'` (or `'**/*.trx'` if C# / .NET)
-   - `condition: succeededOrFailed()` at the STEP level (outside inputs){% endif %}
+   - `condition: succeededOrFailed()` at the STEP level (outside inputs)
+{% endif %}
 
 CRITICAL RULES:
 - Include ONLY steps for which specific commands or tasks are defined above.
+- If Working Directory is specified above, add `workingDirectory: <Working Directory>` to each `- script:` step (install, build, test).
 - Do NOT generate dummy steps, `echo` commands, or placeholder steps if runtime setup or caching is omitted above.
 - Do NOT generate duplicate steps or duplicate commands. If no install command is provided, do NOT generate an install step.
 - Do NOT use `task: Bash@3` or `task: CmdLine@2` for executing shell commands. ALWAYS use standard `- script: <command>` steps.

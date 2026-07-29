@@ -15,6 +15,7 @@ class CSharpDetector(BaseDetector):
             ".cs": "csharp",
             ".csproj": "csharp",
             ".sln": "csharp",
+            ".slnx": "csharp",
         }
 
     @property
@@ -64,38 +65,56 @@ class CSharpDetector(BaseDetector):
 
     @property
     def monorepo_markers(self) -> list[str]:
-        return ["*.csproj"]
+        return ["*.csproj", "*.sln", "*.slnx"]
 
     def detect_dependency_info(self, directory: Path) -> DependencyInfo | None:
-        """Recursive check for .csproj and .sln files in the directory or subdirectories."""
-        csproj_files = [f for f in directory.rglob("*.csproj") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))]
-        sln_files = [f for f in directory.rglob("*.sln") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))]
+        """Recursive check for .csproj, .sln, and .slnx files in the directory or subdirectories."""
+        csproj_files = sorted(
+            [f for f in directory.rglob("*.csproj") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
+            key=lambda f: len(f.relative_to(directory).parts)
+        )
+        sln_files = sorted(
+            [f for f in directory.rglob("*.sln") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
+            key=lambda f: len(f.relative_to(directory).parts)
+        )
 
-        if csproj_files or sln_files:
-            target_file = sln_files[0] if sln_files else csproj_files[0]
-            try:
-                rel_path = target_file.relative_to(directory).as_posix()
-            except ValueError:
-                rel_path = target_file.name
+        if sln_files:
+            target_file = sln_files[0]
+        elif csproj_files:
+            target_file = csproj_files[0]
+        else:
+            return None
 
-            # Include target path in commands if nested in a subfolder
-            install_cmd = f"dotnet restore {rel_path}" if "/" in rel_path else "dotnet restore"
-            build_cmd = f"dotnet build {rel_path} --configuration Release --no-restore" if "/" in rel_path else "dotnet build --configuration Release --no-restore"
+        try:
+            rel_path = target_file.relative_to(directory).as_posix()
+        except ValueError:
+            rel_path = target_file.name
 
-            return DependencyInfo(
-                manager="dotnet",
-                language="csharp",
-                install_command=install_cmd,
-                build_command=build_cmd,
-                manifest_file=rel_path,
-                cache_path="$(Pipeline.Workspace)/.nuget/packages",
-                cache_env_var="NUGET_PACKAGES",
-                azure_setup_task="UseDotNet@2",
-                azure_version_key="version",
-                github_setup_action="actions/setup-dotnet@v4",
-                github_version_key="dotnet-version",
-            )
-        return None
+        working_dir = rel_path.rsplit("/", 1)[0] if "/" in rel_path else None
+
+        # When working_dir is set (nested project/sln), commands can be run directly inside working_dir
+        if working_dir:
+            file_name = rel_path.rsplit("/", 1)[1]
+            install_cmd = f"dotnet restore {file_name}"
+            build_cmd = f"dotnet build {file_name} --configuration Release --no-restore"
+        else:
+            install_cmd = f"dotnet restore {rel_path}"
+            build_cmd = f"dotnet build {rel_path} --configuration Release --no-restore"
+
+        return DependencyInfo(
+            manager="dotnet",
+            language="csharp",
+            install_command=install_cmd,
+            build_command=build_cmd,
+            manifest_file=rel_path,
+            working_dir=working_dir,
+            cache_path="$(Pipeline.Workspace)/.nuget/packages",
+            cache_env_var="NUGET_PACKAGES",
+            azure_setup_task="UseDotNet@2",
+            azure_version_key="version",
+            github_setup_action="actions/setup-dotnet@v4",
+            github_version_key="dotnet-version",
+        )
 
     def resolve_dependency_info(
         self, directory: Path, matched_marker: str, base_info: DependencyInfo,

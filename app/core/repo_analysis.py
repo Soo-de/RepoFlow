@@ -32,6 +32,7 @@ class RepoAnalysis:
     runtime_version: str | None = None
     dependency_manager: str = "unknown"
     manifest_file: str | None = None
+    working_dir: str | None = None
     cache_path: str = "$(Pipeline.Workspace)/.cache"
     cache_env_var: str | None = None
     azure_setup_task: str = "UsePythonVersion@0"
@@ -71,8 +72,8 @@ def analyze(repo_dir: Path, registry: DetectorRegistry | None = None) -> RepoAna
     _detect_default_branch(repo_dir, result)
 
     logger.info(
-        "Analysis complete: language=%s, dep_manager=%s, manifest=%s, test=%s",
-        result.primary_language, result.dependency_manager, result.manifest_file, result.test_framework,
+        "Analysis complete: language=%s, dep_manager=%s, manifest=%s, working_dir=%s, test=%s",
+        result.primary_language, result.dependency_manager, result.manifest_file, result.working_dir, result.test_framework,
     )
     return result
 
@@ -112,6 +113,7 @@ def _detect_dependency_manager(
             if custom_info:
                 result.dependency_manager = custom_info.manager
                 result.manifest_file = custom_info.manifest_file
+                result.working_dir = custom_info.working_dir
                 result.cache_path = custom_info.cache_path
                 result.cache_env_var = custom_info.cache_env_var
                 result.azure_setup_task = custom_info.azure_setup_task
@@ -130,6 +132,7 @@ def _detect_dependency_manager(
                     resolved = detector.resolve_dependency_info(search_dir, marker_file, dep_info)
                     result.dependency_manager = resolved.manager
                     result.manifest_file = resolved.manifest_file or marker_file
+                    result.working_dir = resolved.working_dir
                     result.cache_path = resolved.cache_path
                     result.cache_env_var = resolved.cache_env_var
                     result.azure_setup_task = resolved.azure_setup_task

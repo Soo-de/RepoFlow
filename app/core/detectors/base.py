@@ -11,6 +11,7 @@ class DependencyInfo:
     install_command: str
     build_command: str | None = None
     manifest_file: str | None = None
+    working_dir: str | None = None
     cache_path: str | None = None
     cache_env_var: str | None = None
     azure_setup_task: str | None = None
