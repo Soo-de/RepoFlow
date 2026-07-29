@@ -34,6 +34,10 @@ class RepoAnalysis:
     manifest_file: str | None = None
     cache_path: str = "$(Pipeline.Workspace)/.cache"
     cache_env_var: str | None = None
+    azure_setup_task: str = "UsePythonVersion@0"
+    azure_version_key: str = "versionSpec"
+    github_setup_action: str = "actions/setup-python@v5"
+    github_version_key: str = "python-version"
     install_command: str = ""
     build_command: str | None = None
     test_framework: str | None = None
@@ -103,6 +107,24 @@ def _detect_dependency_manager(
     # Check root level first, then immediate subdirectories
     for search_dir in _search_dirs(repo_dir):
         for detector in registry.detectors:
+            # First check custom detector method (e.g. C# .csproj / .sln rglob)
+            custom_info = detector.detect_dependency_info(search_dir)
+            if custom_info:
+                result.dependency_manager = custom_info.manager
+                result.manifest_file = custom_info.manifest_file
+                result.cache_path = custom_info.cache_path
+                result.cache_env_var = custom_info.cache_env_var
+                result.azure_setup_task = custom_info.azure_setup_task
+                result.azure_version_key = custom_info.azure_version_key
+                result.github_setup_action = custom_info.github_setup_action
+                result.github_version_key = custom_info.github_version_key
+                result.install_command = custom_info.install_command
+                result.build_command = custom_info.build_command
+                if result.primary_language == "unknown":
+                    result.primary_language = custom_info.language
+                return
+
+            # Then check exact marker files
             for marker_file, dep_info in detector.dependency_markers.items():
                 if (search_dir / marker_file).exists():
                     resolved = detector.resolve_dependency_info(search_dir, marker_file, dep_info)
@@ -110,6 +132,10 @@ def _detect_dependency_manager(
                     result.manifest_file = resolved.manifest_file or marker_file
                     result.cache_path = resolved.cache_path
                     result.cache_env_var = resolved.cache_env_var
+                    result.azure_setup_task = resolved.azure_setup_task
+                    result.azure_version_key = resolved.azure_version_key
+                    result.github_setup_action = resolved.github_setup_action
+                    result.github_version_key = resolved.github_version_key
                     result.install_command = resolved.install_command
                     result.build_command = resolved.build_command
                     if result.primary_language == "unknown":

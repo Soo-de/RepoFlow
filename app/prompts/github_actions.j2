@@ -40,19 +40,19 @@ jobs:
 JOB ORGANIZATION:
 {% if analysis.build_command and analysis.test_command %}
 Use TWO jobs:
-  1. A "build" job with steps: checkout, setup runtime, install dependencies, build.
-  2. A "test" job (needs: build) with steps: checkout, setup runtime, install dependencies, run tests, upload results.
+  1. A "build" job containing applicable setup, cache, install, and build steps listed below.
+  2. A "test" job (needs: build) containing applicable setup, cache, install, test, and upload steps listed below.
 {% elif analysis.build_command %}
-Use a SINGLE "build" job with steps: checkout, setup runtime, install dependencies, build. Do NOT include test steps.
+Use a SINGLE "build" job containing applicable setup, cache, install, and build steps listed below. Do NOT include test steps.
 {% elif analysis.test_command %}
-Use a SINGLE "test" job with steps: checkout, setup runtime, install dependencies, run tests, upload results.
+Use a SINGLE "test" job containing applicable setup, cache, install, test, and upload steps listed below.
 {% else %}
-Use a SINGLE "ci" job with steps: checkout, setup runtime, install dependencies. Do NOT include build or test steps.
+Use a SINGLE "ci" job containing applicable setup, cache, and install steps listed below.
 {% endif %}
 
 STEP DETAILS (in order within each job):
 a. Checkout using `actions/checkout@v4`.
-b. Set up the language runtime using the appropriate official setup action for {{ analysis.primary_language }} (e.g., actions/setup-python@v5, actions/setup-node@v4, actions/setup-go@v5, actions/setup-dotnet@v4). Enable dependency caching in the setup action for `{{ analysis.manifest_file if analysis.manifest_file else analysis.dependency_manager }}`.
+{% if analysis.github_setup_action %}b. Set up the {{ analysis.primary_language }} runtime using `{{ analysis.github_setup_action }}`{% if analysis.runtime_version %} with `with: {{ analysis.github_version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Enable dependency caching in the setup action for `{{ analysis.manifest_file if analysis.manifest_file else analysis.dependency_manager }}`.{% endif %}
 {% if analysis.install_command %}c. Install dependencies: `{{ analysis.install_command }}`{% endif %}
 {% if analysis.build_command %}d. Build: `{{ analysis.build_command }}`{% endif %}
 {% if analysis.test_command %}e. Run tests: `{{ analysis.test_command }}`.
@@ -60,6 +60,9 @@ f. Upload test results artifact using `actions/upload-artifact@v4` with `if: alw
 {% if analysis.services_needed %}g. Declare required services ({{ analysis.services_needed | join(', ') }}) under the job's `services:` key with appropriate health checks.{% endif %}
 
 CRITICAL RULES:
+- Include ONLY steps for which specific commands or actions are defined above.
+- Do NOT generate dummy steps, `echo` commands, or placeholder steps if runtime setup or caching is omitted above.
+- Do NOT generate duplicate steps or duplicate commands. If no install command is provided, do NOT generate an install step.
 - Use modern official action versions (@v4, @v5). Do NOT invent action names.
 - Do NOT generate test steps unless a Test Command is explicitly provided above.
 - Every step must have a clear `name:` attribute.

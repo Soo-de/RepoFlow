@@ -11,8 +11,12 @@ class DependencyInfo:
     install_command: str
     build_command: str | None = None
     manifest_file: str | None = None
-    cache_path: str = "$(Pipeline.Workspace)/.cache"
+    cache_path: str | None = None
     cache_env_var: str | None = None
+    azure_setup_task: str | None = None
+    azure_version_key: str | None = None
+    github_setup_action: str | None = None
+    github_version_key: str | None = None
 
 
 @dataclass
@@ -108,6 +112,14 @@ class BaseDetector(ABC):
         Used by the monorepo detection heuristic.
         """
         return []
+
+    def detect_dependency_info(self, directory: Path) -> DependencyInfo | None:
+        """Custom hook for detectors that use dynamic pattern matching (e.g. .csproj/.sln).
+
+        Subclasses can override to dynamically search for manifest files
+        (e.g., rglob for .csproj or .sln files in nested subdirectories).
+        """
+        return None
 
     def resolve_dependency_info(
         self, directory: Path, matched_marker: str, base_info: "DependencyInfo",

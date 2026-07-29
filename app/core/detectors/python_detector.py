@@ -15,6 +15,12 @@ class PythonDetector(BaseDetector):
 
     @property
     def dependency_markers(self) -> dict[str, DependencyInfo]:
+        setup_kwargs = {
+            "azure_setup_task": "UsePythonVersion@0",
+            "azure_version_key": "versionSpec",
+            "github_setup_action": "actions/setup-python@v5",
+            "github_version_key": "python-version",
+        }
         return {
             "pyproject.toml": DependencyInfo(
                 manager="pip", language="python",
@@ -22,6 +28,7 @@ class PythonDetector(BaseDetector):
                 manifest_file="pyproject.toml",
                 cache_path="$(Pipeline.Workspace)/.pip",
                 cache_env_var="PIP_CACHE_DIR",
+                **setup_kwargs,
             ),
             "requirements.txt": DependencyInfo(
                 manager="pip", language="python",
@@ -29,6 +36,7 @@ class PythonDetector(BaseDetector):
                 manifest_file="requirements.txt",
                 cache_path="$(Pipeline.Workspace)/.pip",
                 cache_env_var="PIP_CACHE_DIR",
+                **setup_kwargs,
             ),
             "Pipfile": DependencyInfo(
                 manager="pipenv", language="python",
@@ -36,12 +44,14 @@ class PythonDetector(BaseDetector):
                 manifest_file="Pipfile",
                 cache_path="$(Pipeline.Workspace)/.pip",
                 cache_env_var="PIP_CACHE_DIR",
+                **setup_kwargs,
             ),
             "poetry.lock": DependencyInfo(
                 manager="poetry", language="python",
                 install_command="poetry install",
                 manifest_file="poetry.lock",
                 cache_path="$(Pipeline.Workspace)/.cache/pypoetry",
+                **setup_kwargs,
             ),
             "uv.lock": DependencyInfo(
                 manager="uv", language="python",
@@ -49,6 +59,7 @@ class PythonDetector(BaseDetector):
                 manifest_file="uv.lock",
                 cache_path="$(Pipeline.Workspace)/.cache/uv",
                 cache_env_var="UV_CACHE_DIR",
+                **setup_kwargs,
             ),
             "setup.py": DependencyInfo(
                 manager="pip", language="python",
@@ -56,6 +67,7 @@ class PythonDetector(BaseDetector):
                 manifest_file="setup.py",
                 cache_path="$(Pipeline.Workspace)/.pip",
                 cache_env_var="PIP_CACHE_DIR",
+                **setup_kwargs,
             ),
         }
 
@@ -146,33 +158,70 @@ class PythonDetector(BaseDetector):
         if result:
             return result
 
+        # Check for tests/ or test/ directories
+        if (directory / "tests").is_dir():
+            return TestInfo(framework="pytest", command="python -m pytest tests")
+        if (directory / "test").is_dir():
+            return TestInfo(framework="pytest", command="python -m pytest test")
+
         # Fall back to parsing pyproject.toml for pytest references
         pyproject = directory / "pyproject.toml"
         if pyproject.exists():
             try:
                 content = pyproject.read_text(encoding="utf-8")
-                if "pytest" in content:
+                if "pytest" in content or "unittest" in content:
                     return TestInfo(framework="pytest", command="python -m pytest")
             except OSError:
                 pass
 
+        # Check for test_*.py or *_test.py files
+        for pattern in ("test_*.py", "*_test.py"):
+            for match in directory.rglob(pattern):
+                if not any(skip in match.parts for skip in ("SKIP_DIRS", ".git", "node_modules", ".venv", "venv")):
+                    return TestInfo(framework="pytest", command="python -m pytest")
+
         return None
 
     def detect_runtime_version(self, repo_dir: Path) -> str | None:
-        # Check .python-version file first
+        import re
+
+        # 1. Check .python-version file first
         result = super().detect_runtime_version(repo_dir)
         if result:
-            return result
+            return result.strip()
 
-        # Fall back to parsing requires-python from pyproject.toml
+        # 2. Check runtime.txt (e.g. python-3.11.4 -> 3.11)
+        runtime_txt = repo_dir / "runtime.txt"
+        if runtime_txt.exists():
+            try:
+                content = runtime_txt.read_text(encoding="utf-8").strip()
+                match = re.search(r"(\d+\.\d+)", content)
+                if match:
+                    return match.group(1)
+            except OSError:
+                pass
+
+        # 3. Check pyproject.toml
         pyproject = repo_dir / "pyproject.toml"
         if pyproject.exists():
             try:
                 content = pyproject.read_text(encoding="utf-8")
                 for line in content.splitlines():
                     if "requires-python" in line and "=" in line:
-                        version = line.split("=", 1)[1].strip().strip('"').strip("'")
-                        return version
+                        match = re.search(r"(\d+\.\d+)", line)
+                        if match:
+                            return match.group(1)
+            except OSError:
+                pass
+
+        # 4. Check Pipfile
+        pipfile = repo_dir / "Pipfile"
+        if pipfile.exists():
+            try:
+                content = pipfile.read_text(encoding="utf-8")
+                match = re.search(r'python_version\s*=\s*["\'](\d+\.\d+)["\']', content)
+                if match:
+                    return match.group(1)
             except OSError:
                 pass
 

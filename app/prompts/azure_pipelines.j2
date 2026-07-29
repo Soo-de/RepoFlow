@@ -53,19 +53,19 @@ stages:
 JOB ORGANIZATION:
 {% if analysis.build_command and analysis.test_command %}
 Use TWO jobs inside the CI stage:
-  1. A "Build" job with steps: setup runtime, cache dependencies, install dependencies, build.
-  2. A "Test" job (dependsOn: Build) with steps: setup runtime, cache dependencies, install dependencies, run tests, publish test results.
+  1. A "Build" job containing the applicable setup, cache, install, and build steps listed below.
+  2. A "Test" job (dependsOn: Build) containing the applicable setup, cache, install, test, and publish steps listed below.
 {% elif analysis.build_command %}
-Use a SINGLE job named "Build" with steps: setup runtime, cache dependencies, install dependencies, build. Do NOT include any test steps.
+Use a SINGLE job named "Build" containing the applicable setup, cache, install, and build steps listed below. Do NOT include any test steps.
 {% elif analysis.test_command %}
-Use a SINGLE job named "Test" with steps: setup runtime, cache dependencies, install dependencies, run tests, publish test results.
+Use a SINGLE job named "Test" containing the applicable setup, cache, install, test, and publish steps listed below.
 {% else %}
-Use a SINGLE job named "CI" with steps: setup runtime, cache dependencies, install dependencies. Do NOT include build or test steps.
+Use a SINGLE job named "CI" containing the applicable setup, cache, and install steps listed below.
 {% endif %}
 
 STEP SYNTAX & RULES (in order within each job):
-{% if analysis.runtime_version %}a. Set up the {{ analysis.primary_language }} runtime (version {{ analysis.runtime_version }}). Use a standard Azure task for {{ analysis.primary_language }} (e.g. UsePythonVersion@0 for Python with inputs versionSpec: '{{ analysis.runtime_version }}', UseDotNet@2 for C#).{% endif %}
-{% if analysis.manifest_file %}b. Cache dependencies using `Cache@2` BEFORE the install step.
+{% if analysis.azure_setup_task %}a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ analysis.azure_setup_task }}`{% if analysis.runtime_version %} with inputs `{{ analysis.azure_version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Do NOT use echo commands for runtime setup.{% endif %}
+{% if analysis.manifest_file and analysis.cache_path %}b. Cache dependencies using `Cache@2` BEFORE the install step.
    IMPORTANT for `Cache@2`: Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
    Example:
    - task: Cache@2
@@ -89,6 +89,9 @@ f. Publish test results using `PublishTestResults@2` with:
    - `condition: succeededOrFailed()` at the STEP level (outside inputs){% endif %}
 
 CRITICAL RULES:
+- Include ONLY steps for which specific commands or tasks are defined above.
+- Do NOT generate dummy steps, `echo` commands, or placeholder steps if runtime setup or caching is omitted above.
+- Do NOT generate duplicate steps or duplicate commands. If no install command is provided, do NOT generate an install step.
 - Do NOT use `task: Bash@3` or `task: CmdLine@2` for executing shell commands. ALWAYS use standard `- script: <command>` steps.
 - NEVER mix `task:` and `script:` in the same step.
 - Do NOT use `paths:` under `Cache@2` inputs. `Cache@2` only accepts `path:` as a single string.
