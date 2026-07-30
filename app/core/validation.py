@@ -275,6 +275,10 @@ class PipelineValidator:
             validator_cls = jsonschema.validators.validator_for(schema)
             validator = validator_cls(schema)
             for err in validator.iter_errors(parsed):
+                # Ignore generic root-level oneOf failure message if path is empty
+                if not err.path and "is not valid under any of the given schemas" in err.message:
+                    continue
+
                 line = loader.line_map.get(id(err.instance))
                 if line is None and err.path:
                     # Resolve parent line number

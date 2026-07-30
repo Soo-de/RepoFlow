@@ -61,7 +61,7 @@
             </div>
             <div class="result-actions" id="result-actions-yaml">
                 <button type="button" class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('yaml-output').textContent)">Copy</button>
-                <a href="/jobs/{{ job_id }}/download" class="btn-download" id="download-btn">Download .yml</a>
+                <a href="/jobs/{{ job_id }}/download" class="btn-download">Download .yml</a>
             </div>
             <div class="result-actions" id="result-actions-dockerfile" style="display: none;">
                 <button type="button" class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('dockerfile-output').textContent)">Copy</button>
@@ -87,8 +87,8 @@
 <script id="initial-job-data" type="application/json">
 {
     "status": {{ (job.status.value if job.status.value is defined else job.status)|tojson }},
-    "yaml": {{ (job.result.get("yaml", "") if job.result else "")|tojson }},
-    "dockerfile": {{ (job.result.get("dockerfile", "") if job.result else "")|tojson }},
+    "yaml": {{ (job.result.get("yaml") or "" if job.result else "")|tojson }},
+    "dockerfile": {{ (job.result.get("dockerfile") or "" if job.result else "")|tojson }},
     "error": {{ (job.error or "")|tojson }},
     "failed_stage": {{ (job.failed_stage or "")|tojson }}
 }
