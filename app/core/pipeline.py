@@ -133,6 +133,7 @@ async def execute(
                 validation_passed=is_valid,
                 validation_errors=errors,
                 dockerfile_output=docker_ctx.dockerfile_content,
+                dockerfile_generated=docker_ctx.was_generated,
             )
         finally:
             await llm_client.close()

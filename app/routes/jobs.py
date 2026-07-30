@@ -53,6 +53,7 @@ async def job_stream(job_id: str, cursor: int = 0):
         if final_job.status == JobStatus.DONE and final_job.result:
             payload["yaml"] = final_job.result.get("yaml") or ""
             payload["dockerfile"] = final_job.result.get("dockerfile") or ""
+            payload["dockerfile_generated"] = final_job.result.get("dockerfile_generated", False)
         if final_job.status == JobStatus.FAILED:
             payload["error"] = final_job.error or "Unknown error"
             payload["failed_stage"] = final_job.failed_stage or "cloning"
