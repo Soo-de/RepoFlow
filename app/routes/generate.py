@@ -9,7 +9,7 @@ from app.jobs.store import JobStatus, STAGE_ORDER
 
 router = APIRouter(tags=["generate"])
 
-STAGES = ["cloning", "analyzing", "generating", "validating"]
+STAGES = ["cloning", "analyzing", "dockerizing", "generating", "validating"]
 
 
 @router.get("/", response_class=RedirectResponse)

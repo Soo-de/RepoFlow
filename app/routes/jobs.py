@@ -52,6 +52,7 @@ async def job_stream(job_id: str, cursor: int = 0):
         payload = {"status": final_job.status.value}
         if final_job.status == JobStatus.DONE and final_job.result:
             payload["yaml"] = final_job.result.get("yaml", "")
+            payload["dockerfile"] = final_job.result.get("dockerfile", "")
         if final_job.status == JobStatus.FAILED:
             payload["error"] = final_job.error or "Unknown error"
             payload["failed_stage"] = final_job.failed_stage or "cloning"
@@ -76,4 +77,23 @@ async def job_download(job_id: str):
         content=yaml_content,
         media_type="application/x-yaml",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{job_id}/download/dockerfile")
+async def job_download_dockerfile(job_id: str):
+    job = store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.DONE or not job.result:
+        raise HTTPException(status_code=400, detail="Job not complete")
+
+    dockerfile_content = job.result.get("dockerfile", "")
+    if not dockerfile_content:
+        raise HTTPException(status_code=404, detail="No Dockerfile available")
+
+    return Response(
+        content=dockerfile_content,
+        media_type="text/plain",
+        headers={"Content-Disposition": 'attachment; filename="Dockerfile"'},
     )

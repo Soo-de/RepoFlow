@@ -51,4 +51,12 @@ class PromptBuilder:
             analysis=analysis,
         )
 
+    def build_dockerfile(self, analysis: RepoAnalysis) -> str:
+        """Render the Dockerfile generation prompt template."""
+        try:
+            template = self._env.get_template("dockerfile.j2")
+        except jinja2.TemplateNotFound as err:
+            raise ValueError("Dockerfile prompt template 'dockerfile.j2' not found.") from err
+
+        return template.render(analysis=analysis)
 

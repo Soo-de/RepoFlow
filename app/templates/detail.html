@@ -21,6 +21,11 @@
             <span class="step-label">Analyzing</span>
         </div>
         <div class="step-connector"></div>
+        <div class="step" data-stage="dockerizing">
+            <div class="step-dot"></div>
+            <span class="step-label">Dockerizing</span>
+        </div>
+        <div class="step-connector"></div>
         <div class="step" data-stage="generating">
             <div class="step-dot"></div>
             <span class="step-label">Generating</span>
@@ -50,13 +55,25 @@
 
     <div class="result-panel" id="result-panel" style="display: none;">
         <div class="result-header">
-            <span class="badge badge-done">Complete</span>
-            <div class="result-actions">
+            <div class="result-tabs">
+                <button type="button" class="result-tab active" data-tab="yaml">Pipeline YAML</button>
+                <button type="button" class="result-tab" data-tab="dockerfile">Dockerfile</button>
+            </div>
+            <div class="result-actions" id="result-actions-yaml">
                 <button type="button" class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('yaml-output').textContent)">Copy</button>
                 <a href="/jobs/{{ job_id }}/download" class="btn-download" id="download-btn">Download .yml</a>
             </div>
+            <div class="result-actions" id="result-actions-dockerfile" style="display: none;">
+                <button type="button" class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('dockerfile-output').textContent)">Copy</button>
+                <a href="/jobs/{{ job_id }}/download/dockerfile" class="btn-download">Download Dockerfile</a>
+            </div>
         </div>
-        <pre><code id="yaml-output"></code></pre>
+        <div class="result-tab-content" id="tab-content-yaml">
+            <pre><code id="yaml-output"></code></pre>
+        </div>
+        <div class="result-tab-content" id="tab-content-dockerfile" style="display: none;">
+            <pre><code id="dockerfile-output"></code></pre>
+        </div>
     </div>
 
     <div class="error-panel" id="error-panel" style="display: none;">
@@ -71,6 +88,7 @@
 {
     "status": {{ (job.status.value if job.status.value is defined else job.status)|tojson }},
     "yaml": {{ (job.result.get("yaml", "") if job.result else "")|tojson }},
+    "dockerfile": {{ (job.result.get("dockerfile", "") if job.result else "")|tojson }},
     "error": {{ (job.error or "")|tojson }},
     "failed_stage": {{ (job.failed_stage or "")|tojson }}
 }
@@ -81,14 +99,31 @@
 <script>
 (function() {
     const JOB_ID = "{{ job_id }}";
-    const STAGES = ["cloning", "analyzing", "generating", "validating"];
+    const STAGES = ["cloning", "analyzing", "dockerizing", "generating", "validating"];
     const logEntries = document.getElementById("log-entries");
     const stepper = document.getElementById("stepper");
     const logStatus = document.getElementById("log-status");
     const resultPanel = document.getElementById("result-panel");
     const errorPanel = document.getElementById("error-panel");
     const yamlOutput = document.getElementById("yaml-output");
+    const dockerfileOutput = document.getElementById("dockerfile-output");
     const errorMessage = document.getElementById("error-message");
+
+    // --- Tab switching ---
+    document.querySelectorAll(".result-tab").forEach(function(tab) {
+        tab.addEventListener("click", function() {
+            var target = this.getAttribute("data-tab");
+
+            document.querySelectorAll(".result-tab").forEach(function(t) { t.classList.remove("active"); });
+            this.classList.add("active");
+
+            document.querySelectorAll(".result-tab-content").forEach(function(c) { c.style.display = "none"; });
+            document.getElementById("tab-content-" + target).style.display = "block";
+
+            document.getElementById("result-actions-yaml").style.display = target === "yaml" ? "flex" : "none";
+            document.getElementById("result-actions-dockerfile").style.display = target === "dockerfile" ? "flex" : "none";
+        });
+    });
 
     function activateStage(stage) {
         const stageIdx = STAGES.indexOf(stage);
@@ -155,6 +190,15 @@
         logEntries.scrollTop = logEntries.scrollHeight;
     }
 
+    function showResult(data) {
+        logStatus.textContent = "Complete";
+        logStatus.classList.add("log-status-done");
+        markAllCompleted();
+        yamlOutput.textContent = data.yaml || "";
+        dockerfileOutput.textContent = data.dockerfile || "";
+        resultPanel.style.display = "block";
+    }
+
     var initialLogCount = logEntries.querySelectorAll(".log-entry").length;
     var source = new EventSource("/jobs/" + JOB_ID + "/stream?cursor=" + initialLogCount);
 
@@ -171,11 +215,7 @@
         source.close();
 
         if (data.status === "done") {
-            logStatus.textContent = "Complete";
-            logStatus.classList.add("log-status-done");
-            markAllCompleted();
-            yamlOutput.textContent = data.yaml || "";
-            resultPanel.style.display = "block";
+            showResult(data);
         } else if (data.status === "failed") {
             logStatus.textContent = "Failed";
             logStatus.classList.add("log-status-failed");
@@ -198,13 +238,7 @@
             const status = initialData.status;
 
             if (status === "done") {
-                markAllCompleted();
-                logStatus.textContent = "Complete";
-                logStatus.classList.add("log-status-done");
-                if (initialData.yaml) {
-                    yamlOutput.textContent = initialData.yaml;
-                    resultPanel.style.display = "block";
-                }
+                showResult(initialData);
                 source.close();
             } else if (status === "failed") {
                 logStatus.textContent = "Failed";

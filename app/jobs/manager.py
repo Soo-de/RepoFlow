@@ -35,6 +35,7 @@ async def run_job(
             status=JobStatus.DONE,
             result={
                 "yaml": result.yaml_output,
+                "dockerfile": result.dockerfile_output,
                 "platform": result.platform,
                 "validation_passed": result.validation_passed,
                 "validation_errors": result.validation_errors,

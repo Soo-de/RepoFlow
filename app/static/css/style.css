@@ -728,6 +728,33 @@ footer {
     border-bottom: 1px solid var(--border);
 }
 
+.result-tabs {
+    display: flex;
+    gap: 0;
+}
+
+.result-tab {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color var(--transition), border-color var(--transition);
+}
+
+.result-tab:hover {
+    color: var(--text-primary);
+}
+
+.result-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
 .result-actions {
     display: flex;
     gap: 0.5rem;

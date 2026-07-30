@@ -9,6 +9,7 @@ class JobStatus(str, Enum):
     PENDING = "pending"
     CLONING = "cloning"
     ANALYZING = "analyzing"
+    DOCKERIZING = "dockerizing"
     GENERATING = "generating"
     VALIDATING = "validating"
     DONE = "done"
@@ -19,6 +20,7 @@ STAGE_ORDER = [
     JobStatus.PENDING,
     JobStatus.CLONING,
     JobStatus.ANALYZING,
+    JobStatus.DOCKERIZING,
     JobStatus.GENERATING,
     JobStatus.VALIDATING,
     JobStatus.DONE,

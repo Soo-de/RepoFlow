@@ -44,11 +44,13 @@ class RepoAnalysis:
     test_framework: str | None = None
     test_command: str | None = None
     has_dockerfile: bool = False
+    dockerfile_content: str | None = None
     services_needed: list[str] = field(default_factory=list)
     monorepo: bool = False
     existing_pipeline_files: list[str] = field(default_factory=list)
     entry_points: list[str] = field(default_factory=list)
     default_branch: str = "main"
+    image_name: str = ""
 
 
 def analyze(repo_dir: Path, registry: DetectorRegistry | None = None) -> RepoAnalysis:

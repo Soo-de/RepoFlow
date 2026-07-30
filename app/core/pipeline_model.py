@@ -12,6 +12,7 @@ class PipelineResult:
     validation_passed: bool
     validation_errors: list[str]
     analysis: dict[str, Any] = field(default_factory=dict)
+    dockerfile_output: str | None = None
 
     @staticmethod
     def from_analysis(
@@ -20,6 +21,7 @@ class PipelineResult:
         yaml_output: str = "",
         validation_passed: bool = True,
         validation_errors: list[str] | None = None,
+        dockerfile_output: str | None = None,
     ) -> "PipelineResult":
         return PipelineResult(
             yaml_output=yaml_output,
@@ -27,4 +29,5 @@ class PipelineResult:
             validation_passed=validation_passed,
             validation_errors=validation_errors or [],
             analysis=asdict(analysis),
+            dockerfile_output=dockerfile_output,
         )
