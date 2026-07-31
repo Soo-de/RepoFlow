@@ -95,6 +95,7 @@ def step_matches(step: dict, criteria: dict) -> bool:
             return val_lower.startswith(criteria["starts_with"].lower())
         if "contains" in criteria:
             return criteria["contains"].lower() in val_lower
+        return True
 
     if "script_contains" in criteria:
         script = get_step_script(step)
