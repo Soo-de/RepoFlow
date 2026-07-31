@@ -41,6 +41,7 @@ def test_analyze_node_project(tmp_path):
     assert analysis.install_command == "npm ci"
     assert analysis.runtime_version == "18.16.0"
     assert analysis.test_framework == "jest"
+    assert analysis.lockfile == "package-lock.json"
 
 
 def test_analyze_node_project_default_version(tmp_path):
@@ -54,6 +55,7 @@ def test_analyze_node_project_default_version(tmp_path):
     assert analysis.runtime_version == "20.x"
     # When package-lock.json is missing, fall back to npm install instead of npm ci
     assert analysis.install_command == "npm install"
+    assert analysis.lockfile is None
 
 
 def test_analyze_dockerfile_and_ci_configs(tmp_path):
@@ -82,6 +84,7 @@ def test_analyze_csharp_project_with_sln(tmp_path):
     assert analysis.runtime_version == "10.0.x"
     assert analysis.install_command == "dotnet restore App.sln"
     assert analysis.build_command == "dotnet build App.sln --configuration Release --no-restore"
+    assert analysis.publish_command == "dotnet publish App.sln --configuration Release -o /app/publish"
 
 
 def test_analyze_csharp_project_nested_without_sln(tmp_path):
@@ -96,6 +99,7 @@ def test_analyze_csharp_project_nested_without_sln(tmp_path):
     assert analysis.working_dir == "WebApi"
     assert analysis.install_command == "dotnet restore WebApi.csproj"
     assert analysis.build_command == "dotnet build WebApi.csproj --configuration Release --no-restore"
+    assert analysis.publish_command == "dotnet publish WebApi.csproj --configuration Release -o /app/publish"
 
 
 def test_analyze_csharp_project_with_slnx(tmp_path):
@@ -129,6 +133,7 @@ def test_analyze_nested_node_project(tmp_path):
     assert analysis.working_dir == "cinelog"
     assert analysis.manifest_file == "cinelog/package.json"
     assert analysis.install_command == "npm ci"
+    assert analysis.lockfile == "cinelog/package-lock.json"
 
 
 

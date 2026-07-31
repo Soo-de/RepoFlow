@@ -13,6 +13,9 @@ def test_strip_markdown_fences():
     raw_clean = "name: CI\non: push"
     assert strip_markdown_fences(raw_clean) == "name: CI\non: push"
 
+    raw_nbsp = "name:\u00a0CI\n\u00a0\u00a0on:\u00a0push"
+    assert strip_markdown_fences(raw_nbsp) == "name: CI\n  on: push"
+
 
 def test_validate_valid_github_actions():
     validator = PipelineValidator()

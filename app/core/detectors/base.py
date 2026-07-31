@@ -10,7 +10,9 @@ class DependencyInfo:
     language: str
     install_command: str
     build_command: str | None = None
+    publish_command: str | None = None
     manifest_file: str | None = None
+    lockfile: str | None = None
     working_dir: str | None = None
     cache_path: str | None = None
     cache_env_var: str | None = None

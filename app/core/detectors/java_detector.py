@@ -20,13 +20,16 @@ class JavaDetector(BaseDetector):
                 manager="maven", language="java",
                 install_command="mvn install",
                 build_command="mvn package -DskipTests",
+                publish_command="mvn package -DskipTests",
                 manifest_file="pom.xml",
+                lockfile="pom.xml",
                 cache_path="$(Pipeline.Workspace)/.m2/repository",
             ),
             "build.gradle": DependencyInfo(
                 manager="gradle", language="java",
                 install_command="gradle build -x test",
                 build_command="gradle build -x test",
+                publish_command="gradle build -x test",
                 manifest_file="build.gradle",
                 cache_path="$(Pipeline.Workspace)/.gradle",
             ),
@@ -34,10 +37,30 @@ class JavaDetector(BaseDetector):
                 manager="gradle", language="java",
                 install_command="gradle build -x test",
                 build_command="gradle build -x test",
+                publish_command="gradle build -x test",
                 manifest_file="build.gradle.kts",
                 cache_path="$(Pipeline.Workspace)/.gradle",
             ),
         }
+
+    def resolve_dependency_info(
+        self, directory: Path, matched_marker: str, base_info: DependencyInfo,
+    ) -> DependencyInfo:
+        lockfile = base_info.lockfile
+        if matched_marker in ("build.gradle", "build.gradle.kts"):
+            if (directory / "gradle.lockfile").exists():
+                lockfile = "gradle.lockfile"
+
+        return DependencyInfo(
+            manager=base_info.manager,
+            language=base_info.language,
+            install_command=base_info.install_command,
+            build_command=base_info.build_command,
+            publish_command=base_info.publish_command,
+            manifest_file=base_info.manifest_file or matched_marker,
+            lockfile=lockfile,
+            cache_path=base_info.cache_path,
+        )
 
     @property
     def entry_point_patterns(self) -> list[str]:

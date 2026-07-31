@@ -36,7 +36,8 @@ class NodeDetector(BaseDetector):
                 manager="yarn", language="javascript",
                 install_command="yarn install --frozen-lockfile",
                 build_command="yarn build",
-                manifest_file="yarn.lock",
+                manifest_file="package.json",
+                lockfile="yarn.lock",
                 cache_path="$(Pipeline.Workspace)/.yarn/cache",
                 azure_setup_task="NodeTool@0",
                 azure_version_key="versionSpec",
@@ -47,7 +48,8 @@ class NodeDetector(BaseDetector):
                 manager="pnpm", language="javascript",
                 install_command="pnpm install --frozen-lockfile",
                 build_command="pnpm build",
-                manifest_file="pnpm-lock.yaml",
+                manifest_file="package.json",
+                lockfile="pnpm-lock.yaml",
                 cache_path="$(Pipeline.Workspace)/.pnpm-store",
                 azure_setup_task="NodeTool@0",
                 azure_version_key="versionSpec",
@@ -59,17 +61,22 @@ class NodeDetector(BaseDetector):
     def resolve_dependency_info(
         self, directory: Path, matched_marker: str, base_info: DependencyInfo,
     ) -> DependencyInfo:
-        """Refine install command based on whether package-lock.json exists.
+        """Refine install command and lockfile based on coexisting files.
 
         npm ci strictly requires package-lock.json or npm-shrinkwrap.json.
         If no lockfile is committed to the repository, fall back to npm install.
         """
         install_cmd = base_info.install_command
         manifest = base_info.manifest_file or matched_marker
+        lockfile = base_info.lockfile
 
         if matched_marker == "package.json":
-            has_lockfile = (directory / "package-lock.json").exists() or (directory / "npm-shrinkwrap.json").exists()
-            if not has_lockfile:
+            if (directory / "package-lock.json").exists():
+                lockfile = "package-lock.json"
+            elif (directory / "npm-shrinkwrap.json").exists():
+                lockfile = "npm-shrinkwrap.json"
+            else:
+                lockfile = None
                 install_cmd = "npm install"
 
         return DependencyInfo(
@@ -77,7 +84,9 @@ class NodeDetector(BaseDetector):
             language=base_info.language,
             install_command=install_cmd,
             build_command=base_info.build_command,
+            publish_command=base_info.publish_command,
             manifest_file=manifest,
+            lockfile=lockfile,
             working_dir=base_info.working_dir,
             cache_path=base_info.cache_path,
             cache_env_var=base_info.cache_env_var,

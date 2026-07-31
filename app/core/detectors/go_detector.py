@@ -20,8 +20,25 @@ class GoDetector(BaseDetector):
                 manager="go_modules", language="go",
                 install_command="go mod download",
                 build_command="go build ./...",
+                publish_command="go build -o /app/main .",
+                manifest_file="go.mod",
+                lockfile="go.sum",
             ),
         }
+
+    def resolve_dependency_info(
+        self, directory: Path, matched_marker: str, base_info: DependencyInfo,
+    ) -> DependencyInfo:
+        lockfile = "go.sum" if (directory / "go.sum").exists() else None
+        return DependencyInfo(
+            manager=base_info.manager,
+            language=base_info.language,
+            install_command=base_info.install_command,
+            build_command=base_info.build_command,
+            publish_command=base_info.publish_command,
+            manifest_file=base_info.manifest_file or matched_marker,
+            lockfile=lockfile,
+        )
 
     @property
     def test_configs(self) -> dict[str, TestInfo]:

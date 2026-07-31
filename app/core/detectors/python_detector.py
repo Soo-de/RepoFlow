@@ -49,14 +49,16 @@ class PythonDetector(BaseDetector):
             "poetry.lock": DependencyInfo(
                 manager="poetry", language="python",
                 install_command="poetry install",
-                manifest_file="poetry.lock",
+                manifest_file="pyproject.toml",
+                lockfile="poetry.lock",
                 cache_path="$(Pipeline.Workspace)/.cache/pypoetry",
                 **setup_kwargs,
             ),
             "uv.lock": DependencyInfo(
                 manager="uv", language="python",
                 install_command="uv sync",
-                manifest_file="uv.lock",
+                manifest_file="pyproject.toml",
+                lockfile="uv.lock",
                 cache_path="$(Pipeline.Workspace)/.cache/uv",
                 cache_env_var="UV_CACHE_DIR",
                 **setup_kwargs,
@@ -83,12 +85,18 @@ class PythonDetector(BaseDetector):
         """
         install_cmd = base_info.install_command
         manifest = base_info.manifest_file or matched_marker
+        lockfile = base_info.lockfile
 
         if matched_marker in ("pyproject.toml", "setup.py"):
             req_file = directory / "requirements.txt"
             if req_file.exists():
                 install_cmd = "pip install -r requirements.txt"
                 manifest = "requirements.txt"
+                lockfile = "requirements.txt"
+            elif (directory / "poetry.lock").exists():
+                lockfile = "poetry.lock"
+            elif (directory / "uv.lock").exists():
+                lockfile = "uv.lock"
             else:
                 pyproject = directory / "pyproject.toml"
                 if pyproject.exists():
@@ -99,6 +107,7 @@ class PythonDetector(BaseDetector):
                     except OSError:
                         pass
         elif matched_marker == "requirements.txt":
+            lockfile = "requirements.txt"
             if (directory / "requirements-dev.txt").exists():
                 install_cmd = "pip install -r requirements.txt -r requirements-dev.txt"
             elif (directory / "requirements_dev.txt").exists():
@@ -109,7 +118,9 @@ class PythonDetector(BaseDetector):
             language=base_info.language,
             install_command=install_cmd,
             build_command=base_info.build_command,
+            publish_command=base_info.publish_command,
             manifest_file=manifest,
+            lockfile=lockfile,
             cache_path=base_info.cache_path,
             cache_env_var=base_info.cache_env_var,
         )

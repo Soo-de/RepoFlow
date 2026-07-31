@@ -22,8 +22,8 @@ class ValidationResult:
 
 
 def strip_markdown_fences(text: str) -> str:
-    """Strip markdown code block fences (```yaml ... ```) if present in LLM response."""
-    text = text.strip()
+    """Strip markdown code block fences (```yaml ... ```) and normalize non-breaking spaces if present."""
+    text = text.replace("\u00a0", " ").strip()
     pattern = r"^```(?:yaml|yml)?\s*\n(.*?)\n```$"
     match = re.match(pattern, text, re.DOTALL | re.IGNORECASE)
     if match:

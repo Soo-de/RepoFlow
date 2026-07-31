@@ -10,13 +10,18 @@ Generate a production-ready, multi-stage Dockerfile based on the following proje
 {% if analysis.manifest_file %}
 - Manifest File: {{ analysis.manifest_file }}
 {% endif %}
+{% if analysis.lockfile %}
+- Lock File: {{ analysis.lockfile }}
+{% endif %}
 {% if analysis.working_dir %}
 - Working Directory: {{ analysis.working_dir }} (Project source files reside in this subdirectory. Ensure all file operations, build commands, and install steps execute within this working directory context).
 {% endif %}
 {% if analysis.install_command %}
 - Install Command: {{ analysis.install_command }}
 {% endif %}
-{% if analysis.build_command %}
+{% if analysis.publish_command %}
+- Publish Command: {{ analysis.publish_command }}
+{% elif analysis.build_command %}
 - Build Command: {{ analysis.build_command }}
 {% endif %}
 {% if analysis.entry_points %}
@@ -30,15 +35,15 @@ Stage 1 — Builder:
   - Use an official SDK/builder base image with a valid version tag matching the primary language and runtime version (do NOT use `.x` in Docker image tags).
   - Set WORKDIR to /app.
 {% if analysis.working_dir %}
-  - Copy dependency manifest and lockfiles from `{{ analysis.working_dir }}/` into `./` before running dependency installation.
+  - Copy dependency manifest{% if analysis.lockfile %} ({{ analysis.manifest_file }} and {{ analysis.lockfile }}){% endif %} from `{{ analysis.working_dir }}/` into `./` before running dependency installation.
   - Install dependencies using the detected install command.
   - Copy remaining application source files from `{{ analysis.working_dir }}/` into `./`.
 {% else %}
-  - Copy all dependency manifest files, lockfiles, and project definition files required by the dependency manager before running dependency installation.
+  - Copy dependency manifest files{% if analysis.lockfile %} ({{ analysis.manifest_file }} and {{ analysis.lockfile }}){% endif %} before running dependency installation.
   - Install dependencies using the detected install command.
   - Copy remaining application source files.
 {% endif %}
-  - Run the build or publish command if provided. Ensure all build artifacts are published to a dedicated output directory (e.g. `/app/publish` or `/app/dist`) so that published binaries are available for Stage 2.
+  - Run the build or publish command if provided{% if analysis.publish_command %} (Use Publish Command: `{{ analysis.publish_command }}`){% endif %}. Ensure all build artifacts are published to a dedicated output directory (e.g. `/app/publish` or `/app/dist`) so that published binaries are available for Stage 2.
 
 Stage 2 — Runner:
   - Determine application type from Entry Points and Build Command:

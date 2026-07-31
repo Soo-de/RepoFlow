@@ -32,6 +32,7 @@ class RepoAnalysis:
     runtime_version: str | None = None
     dependency_manager: str = "unknown"
     manifest_file: str | None = None
+    lockfile: str | None = None
     working_dir: str | None = None
     cache_path: str = "$(Pipeline.Workspace)/.cache"
     cache_env_var: str | None = None
@@ -41,6 +42,7 @@ class RepoAnalysis:
     github_version_key: str = "python-version"
     install_command: str = ""
     build_command: str | None = None
+    publish_command: str | None = None
     test_framework: str | None = None
     test_command: str | None = None
     has_dockerfile: bool = False
@@ -116,6 +118,7 @@ def _detect_dependency_manager(
             if custom_info:
                 result.dependency_manager = custom_info.manager
                 result.manifest_file = custom_info.manifest_file
+                result.lockfile = custom_info.lockfile
                 # Set working_dir if defined or if search_dir is a subdirectory
                 if custom_info.working_dir:
                     result.working_dir = custom_info.working_dir
@@ -123,6 +126,9 @@ def _detect_dependency_manager(
                     result.working_dir = search_dir.relative_to(repo_dir).as_posix()
                 else:
                     result.working_dir = None
+
+                if result.working_dir and custom_info.lockfile and not ("/" in custom_info.lockfile):
+                    result.lockfile = f"{result.working_dir}/{custom_info.lockfile}"
 
                 result.cache_path = custom_info.cache_path
                 result.cache_env_var = custom_info.cache_env_var
@@ -132,6 +138,7 @@ def _detect_dependency_manager(
                 result.github_version_key = custom_info.github_version_key
                 result.install_command = custom_info.install_command
                 result.build_command = custom_info.build_command
+                result.publish_command = custom_info.publish_command
                 if result.primary_language == "unknown":
                     result.primary_language = custom_info.language
                 return
@@ -156,6 +163,15 @@ def _detect_dependency_manager(
                     else:
                         result.manifest_file = resolved.manifest_file or marker_file
 
+                    # Format lockfile with working_dir prefix if nested
+                    if resolved.lockfile:
+                        if result.working_dir and not ("/" in resolved.lockfile):
+                            result.lockfile = f"{result.working_dir}/{resolved.lockfile}"
+                        else:
+                            result.lockfile = resolved.lockfile
+                    else:
+                        result.lockfile = None
+
                     result.cache_path = resolved.cache_path
                     result.cache_env_var = resolved.cache_env_var
                     result.azure_setup_task = resolved.azure_setup_task
@@ -164,6 +180,7 @@ def _detect_dependency_manager(
                     result.github_version_key = resolved.github_version_key
                     result.install_command = resolved.install_command
                     result.build_command = resolved.build_command
+                    result.publish_command = resolved.publish_command
                     if result.primary_language == "unknown":
                         result.primary_language = resolved.language
                     return
