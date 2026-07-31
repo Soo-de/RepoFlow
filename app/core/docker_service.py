@@ -27,10 +27,29 @@ def extract_repo_name(repo_url: str) -> str:
     return name.lower()
 
 
-def read_dockerfile(repo_dir: Path) -> str:
+def read_dockerfile(repo_dir: Path, custom_path: str | None = None) -> str:
     """Read and return the content of an existing Dockerfile."""
-    dockerfile_path = repo_dir / DOCKERFILE_NAME
-    return dockerfile_path.read_text(encoding="utf-8")
+    target_rel = custom_path or DOCKERFILE_NAME
+    dockerfile_path = repo_dir / target_rel
+    return dockerfile_path.read_text(encoding="utf-8").strip()
+
+
+def is_placeholder_dockerfile(content: str) -> bool:
+    """Check if Dockerfile content is a placeholder/stub without real build directives."""
+    stripped = content.strip()
+    if not stripped:
+        return True
+
+    # A valid Dockerfile must contain a FROM directive
+    has_from = any(line.strip().upper().startswith("FROM ") for line in stripped.splitlines())
+    if not has_from:
+        return True
+
+    # Check if file is small (< 150 chars) and contains placeholder keywords
+    if len(stripped) < 150 and "placeholder" in stripped.lower():
+        return True
+
+    return False
 
 
 async def generate_dockerfile(llm_client, analysis: RepoAnalysis) -> str:
@@ -49,19 +68,24 @@ async def build_docker_context(
     llm_client,
     repo_url: str,
 ) -> DockerContext:
-    """Orchestrate Dockerfile resolution: read existing or generate new."""
+    """Orchestrate Dockerfile resolution: read valid existing Dockerfile or generate new via LLM."""
     image_name = extract_repo_name(repo_url)
 
     if analysis.has_dockerfile:
-        logger.info("Existing Dockerfile found, reading content")
-        content = read_dockerfile(repo_dir)
-        return DockerContext(
-            dockerfile_content=content,
-            image_name=image_name,
-            was_generated=False,
-        )
+        try:
+            content = read_dockerfile(repo_dir, getattr(analysis, "dockerfile_path", None))
+            if not is_placeholder_dockerfile(content):
+                logger.info("Valid existing Dockerfile found, reading content")
+                return DockerContext(
+                    dockerfile_content=content,
+                    image_name=image_name,
+                    was_generated=False,
+                )
+            logger.warning("Existing Dockerfile is a placeholder or stub. Generating production Dockerfile via LLM.")
+        except (OSError, UnicodeDecodeError) as err:
+            logger.warning("Failed reading existing Dockerfile (%s). Generating via LLM.", err)
 
-    logger.info("No Dockerfile found, generating via LLM")
+    logger.info("Generating Dockerfile via LLM")
     content = await generate_dockerfile(llm_client, analysis)
     return DockerContext(
         dockerfile_content=content,

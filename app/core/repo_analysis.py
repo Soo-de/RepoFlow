@@ -45,6 +45,7 @@ class RepoAnalysis:
     test_command: str | None = None
     has_dockerfile: bool = False
     dockerfile_content: str | None = None
+    dockerfile_path: str | None = None
     services_needed: list[str] = field(default_factory=list)
     monorepo: bool = False
     existing_pipeline_files: list[str] = field(default_factory=list)
@@ -214,8 +215,34 @@ def _detect_services(
     result.services_needed = sorted(services)
 
 
+COMMON_DOCKERFILE_PATHS = [
+    "Dockerfile",
+    "dockerfile",
+    "Dockerfile.dev",
+    "Dockerfile.prod",
+    "docker/Dockerfile",
+    "docker/dockerfile",
+    ".docker/Dockerfile",
+]
+
+
 def _detect_dockerfile(repo_dir: Path, result: RepoAnalysis) -> None:
-    result.has_dockerfile = (repo_dir / "Dockerfile").exists()
+    """Detect Dockerfile location in repository (case-insensitive and subfolder aware)."""
+    for relative_path in COMMON_DOCKERFILE_PATHS:
+        full_path = repo_dir / relative_path
+        if full_path.is_file():
+            result.has_dockerfile = True
+            result.dockerfile_path = relative_path
+            return
+
+    # Search for any file named Dockerfile or dockerfile (ignoring skip dirs)
+    for candidate in repo_dir.rglob("*"):
+        if any(skip in candidate.parts for skip in SKIP_DIRS):
+            continue
+        if candidate.is_file() and candidate.name.lower() == "dockerfile":
+            result.has_dockerfile = True
+            result.dockerfile_path = candidate.relative_to(repo_dir).as_posix()
+            return
 
 
 def _detect_ci_configs(repo_dir: Path, result: RepoAnalysis) -> None:
