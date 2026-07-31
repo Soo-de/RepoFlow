@@ -107,7 +107,10 @@ async def execute(
 
             while not is_valid and retry_count < max_retries:
                 retry_count += 1
-                await _report("validating", f"Validation failed: fixing errors (Attempt {retry_count}/{max_retries})")
+                await _report("validating", f"Validation found {len(errors)} issue(s):")
+                for err in errors:
+                    await _report("validating", f"  • {err}")
+                await _report("validating", f"Attempting LLM self-correction ({retry_count}/{max_retries})...")
 
                 correction_prompt = prompt_builder.build_correction(
                     invalid_yaml=cleaned_yaml,
@@ -124,7 +127,9 @@ async def execute(
             if is_valid:
                 await _report("validating", "Validation passed successfully")
             else:
-                await _report("validating", f"Validation found {len(errors)} issue(s)")
+                await _report("validating", f"Validation finished with {len(errors)} unresolved issue(s):")
+                for err in errors:
+                    await _report("validating", f"  • {err}")
 
             return PipelineResult.from_analysis(
                 analysis=analysis,
