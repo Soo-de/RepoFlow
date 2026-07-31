@@ -64,6 +64,29 @@ a. Checkout using `actions/checkout@v4`.
 f. Upload test results artifact using `actions/upload-artifact@v4` with `if: always()`.{% endif %}
 {% if analysis.services_needed %}g. Declare required services ({{ analysis.services_needed | join(', ') }}) under the job's `services:` key with appropriate health checks.{% endif %}
 
+DOCKER BUILD & PUSH:
+The workflow MUST include an additional job named "docker" that runs AFTER all CI jobs (needs: [build] or [test] or [build, test] depending on which CI jobs exist above).
+This job builds and pushes a Docker image to Docker Hub.
+
+Docker job structure:
+  docker:
+    name: 'Docker Build & Push'
+    runs-on: ubuntu-latest
+    needs: <list of CI job names defined above>
+    steps:
+    - uses: actions/checkout@v4
+    - uses: docker/login-action@v3
+      with:
+        username: {% raw %}${{ secrets.DOCKERHUB_USERNAME }}{% endraw %}
+        password: {% raw %}${{ secrets.DOCKERHUB_PASSWORD }}{% endraw %}
+    - uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          {% raw %}${{ secrets.DOCKERHUB_USERNAME }}{% endraw %}/{{ analysis.image_name }}:{% raw %}${{ github.sha }}{% endraw %}
+          {% raw %}${{ secrets.DOCKERHUB_USERNAME }}{% endraw %}/{{ analysis.image_name }}:latest
+
 CRITICAL RULES:
 - Include ONLY steps for which specific commands or actions are defined above.
 - If Working Directory is specified above, add `working-directory: <Working Directory>` to install, build, and test steps.
@@ -71,5 +94,6 @@ CRITICAL RULES:
 - Do NOT generate duplicate steps or duplicate commands. If no install command is provided, do NOT generate an install step.
 - Use modern official action versions (@v4, @v5). Do NOT invent action names.
 - Do NOT generate test steps unless a Test Command is explicitly provided above.
+- The Docker job MUST always be included and MUST depend on the CI jobs.
 - Every step must have a clear `name:` attribute.
 - Keep the workflow clean, minimal, and production-ready.

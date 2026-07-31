@@ -1,1 +1,19 @@
-# Placeholder — Docker Compose configuration
+services:
+  repoflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    image: soodee/repoflow:latest
+    
+    container_name: repoflow-app
+    
+    ports:
+      - "8000:8000"
+    
+    env_file:
+      - .env
+
+    restart: unless-stopped
+
+

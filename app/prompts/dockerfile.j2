@@ -1,0 +1,56 @@
+You are an expert DevOps engineer specializing in Docker containerization for production workloads.
+
+Generate a production-ready, multi-stage Dockerfile based on the following project analysis:
+
+- Primary Language: {{ analysis.primary_language }}
+{% if analysis.runtime_version %}
+- Runtime Version: {{ analysis.runtime_version }}
+{% endif %}
+- Dependency Manager: {{ analysis.dependency_manager }}
+{% if analysis.manifest_file %}
+- Manifest File: {{ analysis.manifest_file }}
+{% endif %}
+{% if analysis.working_dir %}
+- Working Directory: {{ analysis.working_dir }}
+{% endif %}
+{% if analysis.install_command %}
+- Install Command: {{ analysis.install_command }}
+{% endif %}
+{% if analysis.build_command %}
+- Build Command: {{ analysis.build_command }}
+{% endif %}
+{% if analysis.entry_points %}
+- Entry Points: {{ analysis.entry_points | join(', ') }}
+{% endif %}
+
+DOCKERFILE STRUCTURE:
+Use a multi-stage build with exactly TWO stages:
+
+Stage 1 — Builder:
+  - Use an appropriate official base image with the correct runtime version.
+  - Set WORKDIR to /app.
+  - Copy dependency/manifest files first (for layer caching).
+  - Install dependencies.
+  - Copy the remaining source code.
+  - Run the build command if applicable.
+
+Stage 2 — Runner:
+  - Use a minimal base image (slim/alpine variant of the same runtime).
+  - Set WORKDIR to /app.
+  - Set environment variables to prevent bytecode writing and enable unbuffered output (for interpreted languages).
+  - Install only required system-level runtime dependencies (e.g., native libraries), if any.
+  - Create a non-root user and group for security.
+  - Copy built artifacts or installed dependencies from the builder stage.
+  - Copy application source code.
+  - Set ownership to the non-root user.
+  - Switch to the non-root user.
+  - EXPOSE the standard port for the detected framework/language.
+  - Set an appropriate CMD or ENTRYPOINT based on the detected entry points.
+
+OUTPUT RULES:
+1. Output ONLY a valid Dockerfile. No markdown fences, no explanations, no surrounding text.
+2. Use the EXACT dependency manager and commands from the analysis above.
+3. Follow Docker best practices: minimize layers, leverage build cache, use .dockerignore awareness.
+4. Do NOT include COPY for .env files, secrets, or credentials.
+5. Add clear comments for each logical section.
+6. Keep the Dockerfile clean, minimal, and production-ready.

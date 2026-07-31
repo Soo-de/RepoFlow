@@ -125,6 +125,37 @@ f. Publish test results using `PublishTestResults@2` with:
    - `condition: succeededOrFailed()` at the STEP level (outside inputs)
 {% endif %}
 
+DOCKER BUILD & PUSH:
+The pipeline MUST include a second stage named "Docker" that runs AFTER the CI stage (dependsOn: CI).
+This stage builds and pushes a Docker image to Docker Hub.
+
+Docker stage structure:
+- stage: Docker
+  displayName: 'Docker Build & Push'
+  dependsOn: CI
+  jobs:
+  - job: DockerBuildPush
+    displayName: 'Build and Push Docker Image'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: Docker@2
+      displayName: 'Login to Docker Hub'
+      inputs:
+        command: login
+        containerRegistry: 'dockerhub-connection'
+    - task: Docker@2
+      displayName: 'Build and Push Image'
+      inputs:
+        command: buildAndPush
+        repository: '$(DOCKERHUB_USERNAME)/{{ analysis.image_name }}'
+        dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+        tags: |
+          $(Build.BuildId)
+          latest
+
+IMPORTANT: The Docker stage MUST use `$(DOCKERHUB_USERNAME)` variable for the repository prefix.
+
 CRITICAL RULES:
 - Include ONLY steps for which specific commands or tasks are defined above.
 - If Working Directory is specified above, add `workingDirectory: <Working Directory>` to each `- script:` step (install, build, test).
@@ -136,5 +167,6 @@ CRITICAL RULES:
 - Do NOT include a top-level `concurrency:` block.
 - Do NOT put hyphens before `branches:` in `trigger:` or `pr:`.
 - Do NOT generate test steps or PublishTestResults unless a Test Command is explicitly provided above.
+- The Docker stage MUST always be included and MUST depend on the CI stage.
 - Every step must have a clear `displayName`.
 - Keep the YAML clean, minimal, and production-ready.
