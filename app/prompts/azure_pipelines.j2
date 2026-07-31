@@ -88,7 +88,9 @@ a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ analysis.azu
 {% endif %}
 {% if analysis.manifest_file and analysis.cache_path %}
 b. Cache dependencies using `Cache@2` BEFORE the install step.
-   IMPORTANT for `Cache@2`: Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
+   IMPORTANT for `Cache@2`:
+   - Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
+   - Every job containing `Cache@2` MUST declare the cache variable under `variables:` at the job level (e.g. `{{ analysis.cache_env_var }}: {{ analysis.cache_path }}`) so the package manager populates the cached path during installation.
    Example:
    - task: Cache@2
      displayName: 'Cache dependencies'
@@ -98,7 +100,13 @@ b. Cache dependencies using `Cache@2` BEFORE the install step.
 {% endif %}
 {% if analysis.install_command %}
 c. Install dependencies using a simple `- script:` step:
+{% if analysis.cache_path %}
+   - script: |
+       mkdir -p {{ analysis.cache_path }}
+       {{ analysis.install_command }}
+{% else %}
    - script: {{ analysis.install_command }}
+{% endif %}
 {% if analysis.working_dir %}
      workingDirectory: {{ analysis.working_dir }}
 {% endif %}
@@ -120,14 +128,14 @@ e. Run tests using a simple `- script:` step:
 {% endif %}
      displayName: 'Run tests'
 f. Publish test results using `PublishTestResults@2` with:
-   - `testResultsFormat: 'JUnit'` (or `'VSTest'` if C# / .NET)
-   - `testResultsFiles: '**/test-results.xml'` (or `'**/*.trx'` if C# / .NET)
+   - `testResultsFormat`: matching the framework test format (e.g. `'JUnit'`, `'VSTest'`, etc.)
+   - `testResultsFiles`: matching the generated test result files pattern
    - `condition: succeededOrFailed()` at the STEP level (outside inputs)
 {% endif %}
 
 DOCKER BUILD & PUSH:
 The pipeline MUST include a second stage named "Docker" that runs AFTER the CI stage (dependsOn: CI).
-This stage builds and pushes a Docker image to Docker Hub.
+This stage builds and pushes a Docker image to Docker Hub using an Azure DevOps Docker Registry service connection.
 
 Docker stage structure:
 - stage: Docker
@@ -140,21 +148,17 @@ Docker stage structure:
       vmImage: 'ubuntu-latest'
     steps:
     - task: Docker@2
-      displayName: 'Login to Docker Hub'
-      inputs:
-        command: login
-        containerRegistry: 'dockerhub-connection'
-    - task: Docker@2
-      displayName: 'Build and Push Image'
+      displayName: 'Build and Push Docker Image'
       inputs:
         command: buildAndPush
+        containerRegistry: 'dockerhub-connection'
         repository: '$(DOCKERHUB_USERNAME)/{{ analysis.image_name }}'
-        dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+        dockerfile: '{% if analysis.dockerfile_path %}$(Build.SourcesDirectory)/{{ analysis.dockerfile_path }}{% else %}**/[dD]ockerfile*{% endif %}'
         tags: |
           $(Build.BuildId)
           latest
 
-IMPORTANT: The Docker stage MUST use `$(DOCKERHUB_USERNAME)` variable for the repository prefix.
+IMPORTANT: The Docker stage uses `task: Docker@2` with `containerRegistry: 'dockerhub-connection'`.
 
 CRITICAL RULES:
 - Include ONLY steps for which specific commands or tasks are defined above.

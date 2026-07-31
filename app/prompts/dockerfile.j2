@@ -11,7 +11,7 @@ Generate a production-ready, multi-stage Dockerfile based on the following proje
 - Manifest File: {{ analysis.manifest_file }}
 {% endif %}
 {% if analysis.working_dir %}
-- Working Directory: {{ analysis.working_dir }}
+- Working Directory: {{ analysis.working_dir }} (Project source files reside in this subdirectory. Ensure all file operations, build commands, and install steps execute within this working directory context).
 {% endif %}
 {% if analysis.install_command %}
 - Install Command: {{ analysis.install_command }}
@@ -27,25 +27,24 @@ DOCKERFILE STRUCTURE:
 Use a multi-stage build with exactly TWO stages:
 
 Stage 1 — Builder:
-  - Use an appropriate official base image with the correct runtime version.
+  - Use an official SDK/builder base image with a valid version tag matching the primary language and runtime version (do NOT use `.x` in Docker image tags).
   - Set WORKDIR to /app.
-  - Copy dependency/manifest files first (for layer caching).
-  - Install dependencies.
-  - Copy the remaining source code.
-  - Run the build command if applicable.
+{% if analysis.working_dir %}
+  - Copy dependency manifest and lockfiles from `{{ analysis.working_dir }}/` into `./` before running dependency installation.
+  - Install dependencies using the detected install command.
+  - Copy remaining application source files from `{{ analysis.working_dir }}/` into `./`.
+{% else %}
+  - Copy all dependency manifest files, lockfiles, and project definition files required by the dependency manager before running dependency installation.
+  - Install dependencies using the detected install command.
+  - Copy remaining application source files.
+{% endif %}
+  - Run the build or publish command if provided. Ensure all build artifacts are published to a dedicated output directory (e.g. `/app/publish` or `/app/dist`) so that published binaries are available for Stage 2.
 
 Stage 2 — Runner:
-  - Use a minimal base image (slim/alpine variant of the same runtime).
-  - Set WORKDIR to /app.
-  - Set environment variables to prevent bytecode writing and enable unbuffered output (for interpreted languages).
-  - Install only required system-level runtime dependencies (e.g., native libraries), if any.
-  - Create a non-root user and group for security.
-  - Copy built artifacts or installed dependencies from the builder stage.
-  - Copy application source code.
-  - Set ownership to the non-root user.
-  - Switch to the non-root user.
-  - EXPOSE the standard port for the detected framework/language.
-  - Set an appropriate CMD or ENTRYPOINT based on the detected entry points.
+  - Determine application type from Entry Points and Build Command:
+    * For static web applications, use a minimal web server image, copy the compiled build output directory from the builder stage into the web server root, EXPOSE port 80, and set CMD to run the web server.
+    * For backend applications, use an official minimal language runtime base image, set WORKDIR to /app, copy published build artifacts from the builder stage output directory to /app, create a non-root user, EXPOSE application port, and set CMD to execute the compiled output binary (for compiled languages like .NET, execute the compiled `.dll` or binary file, NEVER source `.cs` or `.ts` files).
+  - Set environment variables for production execution.
 
 OUTPUT RULES:
 1. Output ONLY a valid Dockerfile. No markdown fences, no explanations, no surrounding text.
