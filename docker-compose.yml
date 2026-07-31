@@ -1,25 +1,19 @@
 services:
   repoflow:
-    # Build image using local Dockerfile
     build:
       context: .
       dockerfile: Dockerfile
     
-    # Custom image name and tag
     image: soodee/repoflow:latest
     
-    # Custom container name
     container_name: repoflow-app
     
-    # Port mapping: host:container
     ports:
       - "8000:8000"
     
-    # Automatically load environment variables from .env file at container startup
     env_file:
       - .env
-    
-    # Restart policy: automatically restart container unless explicitly stopped
+
     restart: unless-stopped
 
 
