@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo
 
 
@@ -18,8 +20,25 @@ class RustDetector(BaseDetector):
                 manager="cargo", language="rust",
                 install_command="cargo build",
                 build_command="cargo build --release",
+                publish_command="cargo build --release",
+                manifest_file="Cargo.toml",
+                lockfile="Cargo.lock",
             ),
         }
+
+    def resolve_dependency_info(
+        self, directory: Path, matched_marker: str, base_info: DependencyInfo,
+    ) -> DependencyInfo:
+        lockfile = "Cargo.lock" if (directory / "Cargo.lock").exists() else None
+        return DependencyInfo(
+            manager=base_info.manager,
+            language=base_info.language,
+            install_command=base_info.install_command,
+            build_command=base_info.build_command,
+            publish_command=base_info.publish_command,
+            manifest_file=base_info.manifest_file or matched_marker,
+            lockfile=lockfile,
+        )
 
     @property
     def dep_files_for_service_scan(self) -> list[str]:

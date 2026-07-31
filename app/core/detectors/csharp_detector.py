@@ -97,16 +97,22 @@ class CSharpDetector(BaseDetector):
             file_name = rel_path.rsplit("/", 1)[1]
             install_cmd = f"dotnet restore {file_name}"
             build_cmd = f"dotnet build {file_name} --configuration Release --no-restore"
+            publish_cmd = f"dotnet publish {file_name} --configuration Release -o /app/publish"
         else:
             install_cmd = f"dotnet restore {rel_path}"
             build_cmd = f"dotnet build {rel_path} --configuration Release --no-restore"
+            publish_cmd = f"dotnet publish {rel_path} --configuration Release -o /app/publish"
+
+        lockfile = "packages.lock.json" if (directory / "packages.lock.json").exists() else None
 
         return DependencyInfo(
             manager="dotnet",
             language="csharp",
             install_command=install_cmd,
             build_command=build_cmd,
+            publish_command=publish_cmd,
             manifest_file=rel_path,
+            lockfile=lockfile,
             working_dir=working_dir,
             cache_path="$(Pipeline.Workspace)/.nuget/packages",
             cache_env_var="NUGET_PACKAGES",

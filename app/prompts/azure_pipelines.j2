@@ -10,6 +10,9 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 {% if analysis.manifest_file %}
 - Manifest File: {{ analysis.manifest_file }}
 {% endif %}
+{% if analysis.lockfile %}
+- Lock File: {{ analysis.lockfile }}
+{% endif %}
 - Dependency Manager: {{ analysis.dependency_manager }}
 {% if analysis.working_dir %}
 - Working Directory: {{ analysis.working_dir }}
@@ -95,7 +98,7 @@ b. Cache dependencies using `Cache@2` BEFORE the install step.
    - task: Cache@2
      displayName: 'Cache dependencies'
      inputs:
-       key: '{{ analysis.primary_language }} | "$(Agent.OS)" | "$(Build.SourcesDirectory)/{{ analysis.manifest_file }}"'
+       key: '{{ analysis.primary_language }} | "$(Agent.OS)" | "$(Build.SourcesDirectory)/{{ analysis.lockfile if analysis.lockfile else analysis.manifest_file }}"'
        path: {{ analysis.cache_path }}
 {% endif %}
 {% if analysis.install_command %}

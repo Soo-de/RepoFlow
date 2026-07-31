@@ -6,6 +6,7 @@ Generate a production-ready .github/workflows/ci.yml GitHub Actions pipeline bas
 - Default Branch: {{ analysis.default_branch }}
 {% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
 {% if analysis.manifest_file %}- Manifest File: {{ analysis.manifest_file }}{% endif %}
+{% if analysis.lockfile %}- Lock File: {{ analysis.lockfile }}{% endif %}
 - Dependency Manager: {{ analysis.dependency_manager }}
 {% if analysis.working_dir %}- Working Directory: {{ analysis.working_dir }}{% endif %}
 {% if analysis.install_command %}- Install Command: {{ analysis.install_command }}{% endif %}
@@ -82,6 +83,9 @@ Docker job structure:
     - uses: docker/build-push-action@v5
       with:
         context: .
+{% if analysis.dockerfile_path %}
+        file: {{ analysis.dockerfile_path }}
+{% endif %}
         push: true
         tags: |
           {% raw %}${{ secrets.DOCKERHUB_USERNAME }}{% endraw %}/{{ analysis.image_name }}:{% raw %}${{ github.sha }}{% endraw %}
