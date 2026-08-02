@@ -23,6 +23,7 @@ def test_analyze_python_project(tmp_path):
     assert analysis.test_framework == "pytest"
     assert "postgres" in analysis.services_needed
     assert "main.py" in analysis.entry_points
+    assert analysis.runner_image == "python:3.12-slim"
 
 
 def test_analyze_node_project(tmp_path):
@@ -42,6 +43,7 @@ def test_analyze_node_project(tmp_path):
     assert analysis.runtime_version == "18.16.0"
     assert analysis.test_framework == "jest"
     assert analysis.lockfile == "package-lock.json"
+    assert analysis.runner_image == "node:20-slim"
 
 
 def test_analyze_node_project_default_version(tmp_path):
@@ -100,6 +102,8 @@ def test_analyze_csharp_project_nested_without_sln(tmp_path):
     assert analysis.install_command == "dotnet restore WebApi.csproj"
     assert analysis.build_command == "dotnet build WebApi.csproj --configuration Release --no-restore"
     assert analysis.publish_command == "dotnet publish WebApi.csproj --configuration Release -o /app/publish"
+    assert analysis.runner_image == "mcr.microsoft.com/dotnet/aspnet"
+    assert analysis.runner_entrypoint == "dotnet WebApi.dll"
 
 
 def test_analyze_csharp_project_with_slnx(tmp_path):
@@ -113,10 +117,11 @@ def test_analyze_csharp_project_with_slnx(tmp_path):
 
     assert analysis.primary_language == "csharp"
     assert analysis.dependency_manager == "dotnet"
-    assert analysis.manifest_file == "WebApi/WebApi.csproj"
-    assert analysis.working_dir == "WebApi"
-    assert analysis.install_command == "dotnet restore WebApi.csproj"
-    assert analysis.build_command == "dotnet build WebApi.csproj --configuration Release --no-restore"
+    assert analysis.manifest_file == "App.slnx"
+    assert analysis.install_command == "dotnet restore App.slnx"
+    assert analysis.build_command == "dotnet build App.slnx --configuration Release --no-restore"
+    assert analysis.publish_command == "dotnet publish App.slnx --configuration Release -o /app/publish"
+    assert analysis.runner_entrypoint == "dotnet WebApi.dll"
 
 
 def test_analyze_nested_node_project(tmp_path):

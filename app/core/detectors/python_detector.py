@@ -20,6 +20,7 @@ class PythonDetector(BaseDetector):
             "azure_version_key": "versionSpec",
             "github_setup_action": "actions/setup-python@v5",
             "github_version_key": "python-version",
+            "runner_image": "python:3.12-slim",
         }
         return {
             "pyproject.toml": DependencyInfo(
@@ -86,6 +87,14 @@ class PythonDetector(BaseDetector):
         install_cmd = base_info.install_command
         manifest = base_info.manifest_file or matched_marker
         lockfile = base_info.lockfile
+        runner_entrypoint = base_info.runner_entrypoint
+
+        if (directory / "manage.py").exists():
+            runner_entrypoint = "python manage.py runserver 0.0.0.0:8000"
+        elif (directory / "main.py").exists():
+            runner_entrypoint = "python main.py"
+        elif (directory / "app.py").exists():
+            runner_entrypoint = "python app.py"
 
         if matched_marker in ("pyproject.toml", "setup.py"):
             req_file = directory / "requirements.txt"
@@ -123,6 +132,8 @@ class PythonDetector(BaseDetector):
             lockfile=lockfile,
             cache_path=base_info.cache_path,
             cache_env_var=base_info.cache_env_var,
+            runner_image=base_info.runner_image,
+            runner_entrypoint=runner_entrypoint,
         )
 
     @property

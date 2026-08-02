@@ -69,30 +69,46 @@ class CSharpDetector(BaseDetector):
 
     def detect_dependency_info(self, directory: Path) -> DependencyInfo | None:
         """Recursive check for .csproj, .sln, and .slnx files in the directory or subdirectories."""
-        csproj_files = sorted(
+        all_csproj = sorted(
             [f for f in directory.rglob("*.csproj") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
             key=lambda f: len(f.relative_to(directory).parts)
         )
+        non_test_csproj = [f for f in all_csproj if not any(token in f.name.lower() for token in ("test", "spec"))]
+
         sln_files = sorted(
-            [f for f in directory.rglob("*.sln") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
+            [f for f in directory.rglob("*.sln") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))] +
+            [f for f in directory.rglob("*.slnx") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
             key=lambda f: len(f.relative_to(directory).parts)
         )
 
-        if sln_files:
-            target_file = sln_files[0]
-        elif csproj_files:
-            target_file = csproj_files[0]
-        else:
+        if not sln_files and not all_csproj:
             return None
 
+        # Prioritize executable/web app projects over entity/class libraries
+        exec_csproj = []
+        for p in non_test_csproj:
+            p_dir = p.parent
+            has_entry = (p_dir / "Program.cs").exists() or (p_dir / "Startup.cs").exists()
+            is_web_name = any(k in p.name.lower() for k in ("web", "api", "app", "server"))
+            try:
+                content = p.read_text(encoding="utf-8", errors="ignore")
+                is_web_sdk = "Microsoft.NET.Sdk.Web" in content or "<OutputType>Exe</OutputType>" in content
+            except Exception:
+                is_web_sdk = False
+
+            if has_entry or is_web_sdk or is_web_name:
+                exec_csproj.append(p)
+
+        target_app_csproj = exec_csproj[0] if exec_csproj else (non_test_csproj[0] if non_test_csproj else (all_csproj[0] if all_csproj else None))
+        manifest_target = sln_files[0] if sln_files else target_app_csproj
+
         try:
-            rel_path = target_file.relative_to(directory).as_posix()
+            rel_path = manifest_target.relative_to(directory).as_posix()
         except ValueError:
-            rel_path = target_file.name
+            rel_path = manifest_target.name
 
         working_dir = rel_path.rsplit("/", 1)[0] if "/" in rel_path else None
 
-        # When working_dir is set (nested project/sln), commands can be run directly inside working_dir
         if working_dir:
             file_name = rel_path.rsplit("/", 1)[1]
             install_cmd = f"dotnet restore {file_name}"
@@ -103,7 +119,10 @@ class CSharpDetector(BaseDetector):
             build_cmd = f"dotnet build {rel_path} --configuration Release --no-restore"
             publish_cmd = f"dotnet publish {rel_path} --configuration Release -o /app/publish"
 
+        proj_stem = target_app_csproj.stem if target_app_csproj else manifest_target.stem
         lockfile = "packages.lock.json" if (directory / "packages.lock.json").exists() else None
+        runner_entrypoint = f"dotnet {proj_stem}.dll"
+        runner_image = "mcr.microsoft.com/dotnet/aspnet"
 
         return DependencyInfo(
             manager="dotnet",
@@ -120,6 +139,8 @@ class CSharpDetector(BaseDetector):
             azure_version_key="version",
             github_setup_action="actions/setup-dotnet@v4",
             github_version_key="dotnet-version",
+            runner_image=runner_image,
+            runner_entrypoint=runner_entrypoint,
         )
 
     def resolve_dependency_info(

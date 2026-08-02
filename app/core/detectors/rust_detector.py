@@ -23,6 +23,8 @@ class RustDetector(BaseDetector):
                 publish_command="cargo build --release",
                 manifest_file="Cargo.toml",
                 lockfile="Cargo.lock",
+                runner_image="debian:bookworm-slim",
+                runner_entrypoint="./main",
             ),
         }
 
@@ -38,6 +40,8 @@ class RustDetector(BaseDetector):
             publish_command=base_info.publish_command,
             manifest_file=base_info.manifest_file or matched_marker,
             lockfile=lockfile,
+            runner_image=base_info.runner_image,
+            runner_entrypoint=base_info.runner_entrypoint,
         )
 
     @property

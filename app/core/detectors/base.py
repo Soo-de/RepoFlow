@@ -20,6 +20,8 @@ class DependencyInfo:
     azure_version_key: str | None = None
     github_setup_action: str | None = None
     github_version_key: str | None = None
+    runner_image: str | None = None
+    runner_entrypoint: str | None = None
 
 
 @dataclass

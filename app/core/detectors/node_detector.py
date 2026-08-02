@@ -31,6 +31,8 @@ class NodeDetector(BaseDetector):
                 azure_version_key="versionSpec",
                 github_setup_action="actions/setup-node@v4",
                 github_version_key="node-version",
+                runner_image="node:20-slim",
+                runner_entrypoint="npm start",
             ),
             "yarn.lock": DependencyInfo(
                 manager="yarn", language="javascript",
@@ -43,6 +45,8 @@ class NodeDetector(BaseDetector):
                 azure_version_key="versionSpec",
                 github_setup_action="actions/setup-node@v4",
                 github_version_key="node-version",
+                runner_image="node:20-slim",
+                runner_entrypoint="yarn start",
             ),
             "pnpm-lock.yaml": DependencyInfo(
                 manager="pnpm", language="javascript",
@@ -55,6 +59,8 @@ class NodeDetector(BaseDetector):
                 azure_version_key="versionSpec",
                 github_setup_action="actions/setup-node@v4",
                 github_version_key="node-version",
+                runner_image="node:20-slim",
+                runner_entrypoint="pnpm start",
             ),
         }
 
@@ -69,6 +75,7 @@ class NodeDetector(BaseDetector):
         install_cmd = base_info.install_command
         manifest = base_info.manifest_file or matched_marker
         lockfile = base_info.lockfile
+        runner_entrypoint = base_info.runner_entrypoint
 
         if matched_marker == "package.json":
             if (directory / "package-lock.json").exists():
@@ -78,6 +85,20 @@ class NodeDetector(BaseDetector):
             else:
                 lockfile = None
                 install_cmd = "npm install"
+
+            pkg_json = directory / "package.json"
+            if pkg_json.exists():
+                try:
+                    import json
+                    data = json.loads(pkg_json.read_text(encoding="utf-8"))
+                    main_file = data.get("main")
+                    scripts = data.get("scripts", {})
+                    if "start" in scripts:
+                        runner_entrypoint = "npm start"
+                    elif main_file:
+                        runner_entrypoint = f"node {main_file}"
+                except Exception:
+                    pass
 
         return DependencyInfo(
             manager=base_info.manager,
@@ -94,6 +115,8 @@ class NodeDetector(BaseDetector):
             azure_version_key=base_info.azure_version_key,
             github_setup_action=base_info.github_setup_action,
             github_version_key=base_info.github_version_key,
+            runner_image=base_info.runner_image,
+            runner_entrypoint=runner_entrypoint,
         )
 
     @property

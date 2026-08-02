@@ -24,6 +24,8 @@ class JavaDetector(BaseDetector):
                 manifest_file="pom.xml",
                 lockfile="pom.xml",
                 cache_path="$(Pipeline.Workspace)/.m2/repository",
+                runner_image="eclipse-temurin:21-jre",
+                runner_entrypoint="java -jar app.jar",
             ),
             "build.gradle": DependencyInfo(
                 manager="gradle", language="java",
@@ -32,6 +34,8 @@ class JavaDetector(BaseDetector):
                 publish_command="gradle build -x test",
                 manifest_file="build.gradle",
                 cache_path="$(Pipeline.Workspace)/.gradle",
+                runner_image="eclipse-temurin:21-jre",
+                runner_entrypoint="java -jar app.jar",
             ),
             "build.gradle.kts": DependencyInfo(
                 manager="gradle", language="java",
@@ -40,6 +44,8 @@ class JavaDetector(BaseDetector):
                 publish_command="gradle build -x test",
                 manifest_file="build.gradle.kts",
                 cache_path="$(Pipeline.Workspace)/.gradle",
+                runner_image="eclipse-temurin:21-jre",
+                runner_entrypoint="java -jar app.jar",
             ),
         }
 
@@ -60,6 +66,8 @@ class JavaDetector(BaseDetector):
             manifest_file=base_info.manifest_file or matched_marker,
             lockfile=lockfile,
             cache_path=base_info.cache_path,
+            runner_image=base_info.runner_image,
+            runner_entrypoint=base_info.runner_entrypoint,
         )
 
     @property

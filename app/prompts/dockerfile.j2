@@ -27,6 +27,12 @@ Generate a production-ready, multi-stage Dockerfile based on the following proje
 {% if analysis.entry_points %}
 - Entry Points: {{ analysis.entry_points | join(', ') }}
 {% endif %}
+{% if analysis.runner_image %}
+- Recommended Runner Base Image: {{ analysis.runner_image }}
+{% endif %}
+{% if analysis.runner_entrypoint %}
+- Recommended Execution Entrypoint: {{ analysis.runner_entrypoint }}
+{% endif %}
 
 DOCKERFILE STRUCTURE:
 Use a multi-stage build with exactly TWO stages:
@@ -35,11 +41,11 @@ Stage 1 — Builder:
   - Use an official SDK/builder base image with a valid version tag matching the primary language and runtime version (do NOT use `.x` in Docker image tags).
   - Set WORKDIR to /app.
 {% if analysis.working_dir %}
-  - Copy dependency manifest{% if analysis.lockfile %} ({{ analysis.manifest_file }} and {{ analysis.lockfile }}){% endif %} from `{{ analysis.working_dir }}/` into `./` before running dependency installation.
+  - Copy dependency manifest{% if analysis.lockfile %} ({{ analysis.manifest_file }} and {{ analysis.lockfile }}){% endif %} and all project definition files from `{{ analysis.working_dir }}/` into `./` before running dependency installation.
   - Install dependencies using the detected install command.
   - Copy remaining application source files from `{{ analysis.working_dir }}/` into `./`.
 {% else %}
-  - Copy dependency manifest files{% if analysis.lockfile %} ({{ analysis.manifest_file }} and {{ analysis.lockfile }}){% endif %} before running dependency installation.
+  - Copy dependency manifest files{% if analysis.lockfile %} ({{ analysis.manifest_file }} and {{ analysis.lockfile }}){% endif %}, lockfiles, and all project/sub-project definition files (e.g. all `.csproj` files into their respective directory paths required by solution files) before running dependency installation.
   - Install dependencies using the detected install command.
   - Copy remaining application source files.
 {% endif %}
@@ -48,7 +54,7 @@ Stage 1 — Builder:
 Stage 2 — Runner:
   - Determine application type from Entry Points and Build Command:
     * For static web applications, use a minimal web server image, copy the compiled build output directory from the builder stage into the web server root, EXPOSE port 80, and set CMD to run the web server.
-    * For backend applications, use an official minimal language runtime base image, set WORKDIR to /app, copy published build artifacts from the builder stage output directory to /app, create a non-root user, EXPOSE application port, and set CMD to execute the compiled output binary (for compiled languages like .NET, execute the compiled `.dll` or binary file, NEVER source `.cs` or `.ts` files).
+    * For backend applications, use{% if analysis.runner_image %} `{{ analysis.runner_image }}`{% else %} an official minimal language runtime base image{% endif %}, set WORKDIR to /app, copy published build artifacts from the builder stage output directory to /app, create a non-root user, EXPOSE application port, and set entrypoint/CMD{% if analysis.runner_entrypoint %} to execute `{{ analysis.runner_entrypoint }}`{% else %} to execute the compiled output binary or entrypoint script{% endif %}.
   - Set environment variables for production execution.
 
 OUTPUT RULES:

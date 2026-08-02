@@ -23,6 +23,8 @@ class GoDetector(BaseDetector):
                 publish_command="go build -o /app/main .",
                 manifest_file="go.mod",
                 lockfile="go.sum",
+                runner_image="alpine",
+                runner_entrypoint="./main",
             ),
         }
 
@@ -30,14 +32,28 @@ class GoDetector(BaseDetector):
         self, directory: Path, matched_marker: str, base_info: DependencyInfo,
     ) -> DependencyInfo:
         lockfile = "go.sum" if (directory / "go.sum").exists() else None
+        
+        main_files = [f for f in directory.rglob("main.go") if not any(skip in f.parts for skip in (".git", "vendor", "node_modules"))]
+        if main_files:
+            rel_main = main_files[0].relative_to(directory).as_posix()
+            if "/" in rel_main:
+                pkg_dir = rel_main.rsplit("/", 1)[0]
+                publish_cmd = f"go build -o /app/main ./{pkg_dir}"
+            else:
+                publish_cmd = "go build -o /app/main ."
+        else:
+            publish_cmd = base_info.publish_command
+
         return DependencyInfo(
             manager=base_info.manager,
             language=base_info.language,
             install_command=base_info.install_command,
             build_command=base_info.build_command,
-            publish_command=base_info.publish_command,
+            publish_command=publish_cmd,
             manifest_file=base_info.manifest_file or matched_marker,
             lockfile=lockfile,
+            runner_image=base_info.runner_image,
+            runner_entrypoint="./main",
         )
 
     @property

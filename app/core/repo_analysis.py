@@ -43,6 +43,8 @@ class RepoAnalysis:
     install_command: str = ""
     build_command: str | None = None
     publish_command: str | None = None
+    runner_image: str | None = None
+    runner_entrypoint: str | None = None
     test_framework: str | None = None
     test_command: str | None = None
     has_dockerfile: bool = False
@@ -139,6 +141,8 @@ def _detect_dependency_manager(
                 result.install_command = custom_info.install_command
                 result.build_command = custom_info.build_command
                 result.publish_command = custom_info.publish_command
+                result.runner_image = custom_info.runner_image
+                result.runner_entrypoint = custom_info.runner_entrypoint
                 if result.primary_language == "unknown":
                     result.primary_language = custom_info.language
                 return
@@ -181,6 +185,8 @@ def _detect_dependency_manager(
                     result.install_command = resolved.install_command
                     result.build_command = resolved.build_command
                     result.publish_command = resolved.publish_command
+                    result.runner_image = resolved.runner_image
+                    result.runner_entrypoint = resolved.runner_entrypoint
                     if result.primary_language == "unknown":
                         result.primary_language = resolved.language
                     return
