@@ -73,8 +73,14 @@ class CSharpDetector(BaseDetector):
             [f for f in directory.rglob("*.sln") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
             key=lambda f: len(f.relative_to(directory).parts)
         )
+        slnx_files = sorted(
+            [f for f in directory.rglob("*.slnx") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
+            key=lambda f: len(f.relative_to(directory).parts)
+        )
 
-        if sln_files:
+        if slnx_files:
+            target_file = slnx_files[0]
+        elif sln_files:
             target_file = sln_files[0]
         elif csproj_files:
             target_file = csproj_files[0]
