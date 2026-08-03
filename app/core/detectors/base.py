@@ -1,6 +1,17 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.platform_detect import Platform
+
+
+@dataclass
+class PlatformSetupInfo:
+    """Platform-specific runtime setup action/task metadata for a language ecosystem."""
+    task_or_action: str | None = None
+    version_key: str | None = None
 
 
 @dataclass
@@ -16,10 +27,10 @@ class DependencyInfo:
     working_dir: str | None = None
     cache_path: str | None = None
     cache_env_var: str | None = None
-    azure_setup_task: str | None = None
-    azure_version_key: str | None = None
-    github_setup_action: str | None = None
-    github_version_key: str | None = None
+    runner_image: str | None = None
+    runner_entrypoint: str | None = None
+    app_type: str = "runtime_service"
+    publish_dir: str | None = None
 
 
 @dataclass
@@ -66,6 +77,16 @@ class BaseDetector(ABC):
 
         Example: {"pyproject.toml": DependencyInfo(manager="pip", ...)}
         """
+
+    @property
+    def platform_setups(self) -> dict["Platform", PlatformSetupInfo]:
+        """Map of CI/CD Platform to setup task/action metadata for this ecosystem.
+
+        Subclasses override this to specify their platform-specific setup task names
+        (e.g., UsePythonVersion@0 vs actions/setup-python@v5) without leaking
+        them into the core RepoAnalysis object.
+        """
+        return {}
 
     @property
     def test_configs(self) -> dict[str, TestInfo]:

@@ -1,4 +1,7 @@
-from app.core.detectors.base import BaseDetector, DependencyInfo
+from pathlib import Path
+
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo
+from app.core.platform_detect import Platform
 
 
 class SwiftDetector(BaseDetector):
@@ -6,6 +9,12 @@ class SwiftDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "swift"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("swift-actions/setup-swift@v2", "swift-version"),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:

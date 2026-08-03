@@ -2,6 +2,7 @@
 Unit tests for PromptBuilder module.
 """
 
+from app.core.detectors.base import DependencyInfo
 from app.core.platform_detect import Platform
 from app.core.repo_analysis import RepoAnalysis
 from app.core.prompt_builder import PromptBuilder
@@ -11,9 +12,13 @@ def test_prompt_builder_github_actions():
     builder = PromptBuilder()
     analysis = RepoAnalysis(
         primary_language="Python",
-        dependency_manager="pip",
+        dependency_info=DependencyInfo(
+            manager="pip",
+            language="Python",
+            install_command="pip install -r requirements.txt",
+            build_command="pip install -e .",
+        ),
         test_framework="pytest",
-        build_command="pip install -e .",
         test_command="pytest",
         runtime_version="3.11",
         services_needed=["postgres"],
@@ -30,7 +35,11 @@ def test_prompt_builder_azure_pipelines():
     builder = PromptBuilder()
     analysis = RepoAnalysis(
         primary_language="Node.js",
-        dependency_manager="npm",
+        dependency_info=DependencyInfo(
+            manager="npm",
+            language="Node.js",
+            install_command="npm ci",
+        ),
         test_framework="jest",
         test_command="npm test",
     )

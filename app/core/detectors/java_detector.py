@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo
+from app.core.platform_detect import Platform
 
 
 class JavaDetector(BaseDetector):
@@ -8,6 +9,13 @@ class JavaDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "java"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-java@v4", "java-version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("JavaToolInstaller@0", "versionSpec"),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:
@@ -60,6 +68,10 @@ class JavaDetector(BaseDetector):
             manifest_file=base_info.manifest_file or matched_marker,
             lockfile=lockfile,
             cache_path=base_info.cache_path,
+            runner_image="eclipse-temurin:21-jre",
+            runner_entrypoint="java -jar app.jar",
+            app_type="runtime_service",
+            publish_dir="target",
         )
 
     @property

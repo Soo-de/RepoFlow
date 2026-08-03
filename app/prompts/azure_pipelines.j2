@@ -86,8 +86,8 @@ Use a SINGLE job named "CI" containing the applicable setup, cache, and install 
 {% endif %}
 
 STEP SYNTAX & RULES (in order within each job):
-{% if analysis.azure_setup_task %}
-a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ analysis.azure_setup_task }}`{% if analysis.runtime_version %} with inputs `{{ analysis.azure_version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Do NOT use echo commands for runtime setup.
+{% if setup and setup.task_or_action %}
+a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with inputs `{{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Do NOT use echo commands for runtime setup.
 {% endif %}
 {% if analysis.manifest_file and analysis.cache_path %}
 b. Cache dependencies using `Cache@2` BEFORE the install step.

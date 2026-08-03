@@ -28,7 +28,8 @@ class PromptBuilder:
         except jinja2.TemplateNotFound as err:
             raise ValueError(f"Prompt template for platform '{platform.value}' not found: {template_name}") from err
 
-        return template.render(analysis=analysis)
+        setup_info = analysis.get_platform_setup(platform) if analysis else None
+        return template.render(analysis=analysis, setup=setup_info)
 
     def build_correction(
         self,
@@ -44,11 +45,14 @@ class PromptBuilder:
             raise ValueError("Correction prompt template 'correction.j2' not found.") from err
 
         platform_name = platform.value if platform else "CI/CD"
+        setup_info = analysis.get_platform_setup(platform) if platform and analysis else None
+
         return template.render(
             invalid_yaml=invalid_yaml,
             validation_errors=errors,
             platform_name=platform_name,
             analysis=analysis,
+            setup=setup_info,
         )
 
     def build_dockerfile(self, analysis: RepoAnalysis) -> str:

@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo, ServiceHint
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo, ServiceHint
+from app.core.platform_detect import Platform
 
 
 class NodeDetector(BaseDetector):
@@ -8,6 +9,13 @@ class NodeDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "javascript"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-node@v4", "node-version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("NodeTool@0", "versionSpec"),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:
@@ -27,10 +35,6 @@ class NodeDetector(BaseDetector):
                 manifest_file="package.json",
                 cache_path="$(Pipeline.Workspace)/.npm",
                 cache_env_var="npm_config_cache",
-                azure_setup_task="NodeTool@0",
-                azure_version_key="versionSpec",
-                github_setup_action="actions/setup-node@v4",
-                github_version_key="node-version",
             ),
             "yarn.lock": DependencyInfo(
                 manager="yarn", language="javascript",
@@ -39,10 +43,6 @@ class NodeDetector(BaseDetector):
                 manifest_file="package.json",
                 lockfile="yarn.lock",
                 cache_path="$(Pipeline.Workspace)/.yarn/cache",
-                azure_setup_task="NodeTool@0",
-                azure_version_key="versionSpec",
-                github_setup_action="actions/setup-node@v4",
-                github_version_key="node-version",
             ),
             "pnpm-lock.yaml": DependencyInfo(
                 manager="pnpm", language="javascript",
@@ -51,33 +51,79 @@ class NodeDetector(BaseDetector):
                 manifest_file="package.json",
                 lockfile="pnpm-lock.yaml",
                 cache_path="$(Pipeline.Workspace)/.pnpm-store",
-                azure_setup_task="NodeTool@0",
-                azure_version_key="versionSpec",
-                github_setup_action="actions/setup-node@v4",
-                github_version_key="node-version",
             ),
         }
 
     def resolve_dependency_info(
         self, directory: Path, matched_marker: str, base_info: DependencyInfo,
     ) -> DependencyInfo:
-        """Refine install command and lockfile based on coexisting files.
+        """Refine install command, lockfile, runner_image, and runner_entrypoint.
 
-        npm ci strictly requires package-lock.json or npm-shrinkwrap.json.
-        If no lockfile is committed to the repository, fall back to npm install.
+        1. Lockfile Verification: Only assign lockfile if it actually exists in directory.
+        2. Application Categorization: Distinguish static web frontend (Vite, React, Vue, Svelte)
+           which requires NGINX serving, from Node.js backend runtime applications (Express, NestJS).
         """
         install_cmd = base_info.install_command
         manifest = base_info.manifest_file or matched_marker
-        lockfile = base_info.lockfile
+        lockfile = None
+        runner_image = "node:20-slim"
+        runner_entrypoint = "npm start"
 
-        if matched_marker == "package.json":
-            if (directory / "package-lock.json").exists():
-                lockfile = "package-lock.json"
-            elif (directory / "npm-shrinkwrap.json").exists():
-                lockfile = "npm-shrinkwrap.json"
-            else:
-                lockfile = None
-                install_cmd = "npm install"
+        pkg_json = directory / "package.json"
+        is_static_frontend = False
+
+        if pkg_json.exists():
+            try:
+                import json
+                data = json.loads(pkg_json.read_text(encoding="utf-8"))
+                scripts = data.get("scripts", {})
+                deps = data.get("dependencies", {})
+                dev_deps = data.get("devDependencies", {})
+                all_deps = {**deps, **dev_deps}
+
+                # Detect static frontend tools (Vite, React Scripts, Vue CLI, Svelte, Astro, Parcel)
+                frontend_indicators = {"vite", "react-scripts", "@vue/cli", "astro", "@angular/cli", "svelte", "parcel"}
+                backend_indicators = {"express", "nest", "@nestjs/core", "fastify", "koa"}
+
+                has_frontend_tool = any(tool in all_deps for tool in frontend_indicators)
+                has_backend_framework = any(tool in all_deps for tool in backend_indicators)
+
+                if has_frontend_tool and not has_backend_framework:
+                    is_static_frontend = True
+
+                main_file = data.get("main")
+                if "start" in scripts:
+                    runner_entrypoint = "npm start"
+                elif main_file:
+                    runner_entrypoint = f"node {main_file}"
+            except Exception:
+                pass
+
+        if is_static_frontend:
+            app_type = "static_frontend"
+            publish_dir = "dist"
+            runner_image = "nginx:alpine"
+            runner_entrypoint = 'nginx -g "daemon off;"'
+        else:
+            app_type = "runtime_service"
+            publish_dir = None
+
+        # Safely assign lockfile only if it actually exists on disk
+        if (directory / "package-lock.json").exists():
+            lockfile = "package-lock.json"
+            install_cmd = "npm ci"
+        elif (directory / "yarn.lock").exists():
+            lockfile = "yarn.lock"
+            install_cmd = "yarn install --frozen-lockfile"
+        elif (directory / "pnpm-lock.yaml").exists():
+            lockfile = "pnpm-lock.yaml"
+            install_cmd = "pnpm install --frozen-lockfile"
+        elif (directory / "npm-shrinkwrap.json").exists():
+            lockfile = "npm-shrinkwrap.json"
+            install_cmd = "npm ci"
+        else:
+            lockfile = None
+            install_cmd = "npm install"
 
         return DependencyInfo(
             manager=base_info.manager,
@@ -90,10 +136,10 @@ class NodeDetector(BaseDetector):
             working_dir=base_info.working_dir,
             cache_path=base_info.cache_path,
             cache_env_var=base_info.cache_env_var,
-            azure_setup_task=base_info.azure_setup_task,
-            azure_version_key=base_info.azure_version_key,
-            github_setup_action=base_info.github_setup_action,
-            github_version_key=base_info.github_version_key,
+            runner_image=runner_image,
+            runner_entrypoint=runner_entrypoint,
+            app_type=app_type,
+            publish_dir=publish_dir,
         )
 
     @property

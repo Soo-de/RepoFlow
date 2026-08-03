@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo
+from app.core.platform_detect import Platform
 
 
 class RustDetector(BaseDetector):
@@ -8,6 +9,12 @@ class RustDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "rust"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("dtolnay/rust-toolchain@stable", "toolchain"),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:
@@ -30,6 +37,19 @@ class RustDetector(BaseDetector):
         self, directory: Path, matched_marker: str, base_info: DependencyInfo,
     ) -> DependencyInfo:
         lockfile = "Cargo.lock" if (directory / "Cargo.lock").exists() else None
+        is_wasm_site = (directory / "Trunk.toml").exists()
+
+        if is_wasm_site:
+            app_type = "static_frontend"
+            publish_dir = "dist"
+            runner_image = "nginx:alpine"
+            runner_entrypoint = 'nginx -g "daemon off;"'
+        else:
+            app_type = "runtime_service"
+            publish_dir = None
+            runner_image = "debian:bookworm-slim"
+            runner_entrypoint = "./main"
+
         return DependencyInfo(
             manager=base_info.manager,
             language=base_info.language,
@@ -38,6 +58,10 @@ class RustDetector(BaseDetector):
             publish_command=base_info.publish_command,
             manifest_file=base_info.manifest_file or matched_marker,
             lockfile=lockfile,
+            runner_image=runner_image,
+            runner_entrypoint=runner_entrypoint,
+            app_type=app_type,
+            publish_dir=publish_dir,
         )
 
     @property

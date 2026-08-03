@@ -1,4 +1,7 @@
-from app.core.detectors.base import BaseDetector, DependencyInfo
+from pathlib import Path
+
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo
+from app.core.platform_detect import Platform
 
 
 class KotlinDetector(BaseDetector):
@@ -6,6 +9,13 @@ class KotlinDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "kotlin"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-java@v4", "java-version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("JavaToolInstaller@0", "versionSpec"),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:

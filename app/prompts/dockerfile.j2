@@ -45,10 +45,21 @@ Stage 1 — Builder:
 {% endif %}
   - Run the build or publish command if provided{% if analysis.publish_command %} (Use Publish Command: `{{ analysis.publish_command }}`){% endif %}. Ensure all build artifacts are published to a dedicated output directory (e.g. `/app/publish` or `/app/dist`) so that published binaries are available for Stage 2.
 
+- Application Type: {{ analysis.app_type }}
+{% if analysis.publish_dir %}
+- Compiled Publish Output Directory: {{ analysis.publish_dir }}
+{% endif %}
+{% if analysis.runner_image %}
+- Recommended Runner Base Image: {{ analysis.runner_image }}
+{% endif %}
+{% if analysis.runner_entrypoint %}
+- Recommended Execution Entrypoint: {{ analysis.runner_entrypoint }}
+{% endif %}
+
 Stage 2 — Runner:
-  - Determine application type from Entry Points and Build Command:
-    * For static web applications, use a minimal web server image, copy the compiled build output directory from the builder stage into the web server root, EXPOSE port 80, and set CMD to run the web server.
-    * For backend applications, use an official minimal language runtime base image, set WORKDIR to /app, copy published build artifacts from the builder stage output directory to /app, create a non-root user, EXPOSE application port, and set CMD to execute the compiled output binary (for compiled languages like .NET, execute the compiled `.dll` or binary file, NEVER source `.cs` or `.ts` files).
+  - Render Stage 2 based on Application Type:
+    * If Application Type is `static_frontend`: Use `nginx:alpine` as runner base image, copy compiled static web assets from `/app/{{ analysis.publish_dir | default('dist') }}` into NGINX document root `/usr/share/nginx/html`, EXPOSE port 80, and set CMD to `["nginx", "-g", "daemon off;"]`.
+    * If Application Type is `runtime_service`: Use the recommended runner base image (`{{ analysis.runner_image }}`), set WORKDIR to /app, copy published build artifacts from builder stage output directory into `/app`, EXPOSE application port, and set CMD/ENTRYPOINT to execute `{{ analysis.runner_entrypoint }}`.
   - Set environment variables for production execution.
 
 OUTPUT RULES:
