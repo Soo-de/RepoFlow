@@ -113,10 +113,10 @@ def test_analyze_csharp_project_with_slnx(tmp_path):
 
     assert analysis.primary_language == "csharp"
     assert analysis.dependency_manager == "dotnet"
-    assert analysis.manifest_file == "WebApi/WebApi.csproj"
-    assert analysis.working_dir == "WebApi"
-    assert analysis.install_command == "dotnet restore WebApi.csproj"
-    assert analysis.build_command == "dotnet build WebApi.csproj --configuration Release --no-restore"
+    assert analysis.manifest_file == "App.slnx"
+    assert analysis.install_command == "dotnet restore App.slnx"
+    assert analysis.build_command == "dotnet build App.slnx --configuration Release --no-restore"
+    assert analysis.publish_command == "dotnet publish App.slnx --configuration Release -o /app/publish"
 
 
 def test_analyze_nested_node_project(tmp_path):
