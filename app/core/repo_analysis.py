@@ -46,6 +46,10 @@ class RepoAnalysis:
     matched_detector: BaseDetector | None = None
     dependency_info: DependencyInfo | None = None
 
+    def apply_dependency_info(self, info: DependencyInfo) -> None:
+        """Store dependency_info and synchronize legacy fields."""
+        self.dependency_info = info
+
     @property
     def dependency_manager(self) -> str:
         return self.dependency_info.manager if self.dependency_info else "unknown"
@@ -196,7 +200,7 @@ def _detect_dependency_manager(
             custom_info = detector.detect_dependency_info(search_dir)
             if custom_info:
                 result.matched_detector = detector
-                result.dependency_info = _format_dependency_info(repo_dir, search_dir, custom_info)
+                result.apply_dependency_info(_format_dependency_info(repo_dir, search_dir, custom_info))
                 if result.primary_language == "unknown":
                     result.primary_language = custom_info.language
                 return
@@ -205,12 +209,10 @@ def _detect_dependency_manager(
                 if (search_dir / marker_file).exists():
                     resolved = detector.resolve_dependency_info(search_dir, marker_file, dep_info)
                     result.matched_detector = detector
-                    result.dependency_info = _format_dependency_info(repo_dir, search_dir, resolved)
+                    result.apply_dependency_info(_format_dependency_info(repo_dir, search_dir, resolved))
                     if result.primary_language == "unknown":
                         result.primary_language = resolved.language
                     return
-
-    result.dependency_manager = "unknown"
 
 
 def _detect_test_framework(
