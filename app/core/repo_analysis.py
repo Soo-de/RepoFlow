@@ -36,10 +36,10 @@ class RepoAnalysis:
     working_dir: str | None = None
     cache_path: str = "$(Pipeline.Workspace)/.cache"
     cache_env_var: str | None = None
-    azure_setup_task: str = "UsePythonVersion@0"
-    azure_version_key: str = "versionSpec"
-    github_setup_action: str = "actions/setup-python@v5"
-    github_version_key: str = "python-version"
+    azure_setup_task: str | None = None
+    azure_version_key: str | None = None
+    github_setup_action: str | None = None
+    github_version_key: str | None = None
     install_command: str = ""
     build_command: str | None = None
     publish_command: str | None = None
