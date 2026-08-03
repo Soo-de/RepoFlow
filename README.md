@@ -1,4 +1,4 @@
-# RepoFlow 🚀
+# RepoFlow ⚡
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
@@ -6,102 +6,111 @@
 ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Supported-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
 ![Azure Pipelines](https://img.shields.io/badge/Azure%20Pipelines-Supported-0078D4?style=for-the-badge&logo=azuredevops&logoColor=white)
 
-**RepoFlow** is an AI-powered Continuous Integration (CI) pipeline generator and self-healing engine built on a **modular, platform-agnostic architecture**. It analyzes software repositories, automatically detects tech stacks and project configurations, and generates optimized, production-ready CI workflows with real-time tracking and automated error recovery.
+**Zero-Config, Self-Healing CI/CD Pipeline Generator for Any Stack.**
 
-> **Note:** RepoFlow specifically focuses on **CI (Continuous Integration)** generation—including automated testing, linting, dependency caching, build verification, and container packaging—rather than full deployment (CD) orchestrations.
+RepoFlow analyzes any repository, detects frameworks and lockfiles, and generates production-ready, validated CI workflows in seconds with real-time SSE progress streaming and autonomous AI self-healing.
 
 ---
 
-## ✨ Key Features
+## ⚡ Product Features
 
-- **🔍 Automatic Repository Analysis**
-  Scans local paths or remote Git URLs to detect programming languages, frameworks, package managers, test suites, and Docker configurations.
+- **🔍 Autonomous Stack & Framework Detection**
+  Scans local repos or remote Git URLs across **11+ language ecosystems** (Python, Node.js, .NET, Go, Rust, Java, C/C++, PHP, Ruby, Kotlin, Swift).
 
-- **🤖 AI-Driven CI Generation**
-  Generates clean, standardized CI workflows tailored to your project using Google Gemini or Groq LLMs with Jinja2 prompt engineering.
+- **🌐 Universal SPA vs Service Containerization**
+  Intelligently classifies static web SPAs (`nginx:alpine` -> `/usr/share/nginx/html`) vs backend runtime microservices (`node:20-slim`, `aspnet`, `python:3.12-slim`).
 
 - **🩺 Self-Healing Pipeline Engine**
-  Validates generated YAML files against platform schemas, syntax rules, and anti-patterns. Automatically repairs broken configurations using LLM feedback loops.
+  Multi-pass AST and schema validator that autonomously catches broken syntax, missing steps, or anti-patterns, repairing YAML configurations via LLM feedback loops.
 
-- **⚡ Real-Time Streaming & Visualizer**
-  Streams live job progress, step updates, logs, and state transitions to an interactive web interface via Server-Sent Events (SSE).
+- **⚡ Real-Time SSE Visualizer**
+  Streams live pipeline analysis, step execution, logs, and state transitions directly to a modern glassmorphic web dashboard via Server-Sent Events (SSE).
 
-- **🌐 Modular Platform Architecture**
-  Designed with an extensible platform-based implementation layer. Currently supports **GitHub Actions** (`.github/workflows/ci.yml`) and **Azure Pipelines** (`azure-pipelines.yml`) out of the box, with a pluggable design for adding future platforms.
-
----
-
-## ⚙️ Key Technologies
-
-- **AI & Prompt Engineering:** Google Gemini API (`gemini-2.0-flash`), Groq API (`llama-3.3-70b-versatile`), Jinja2 Template Engine
-- **Backend & Async Runtime:** Python 3.11+, FastAPI, Uvicorn, Pydantic Settings
-- **Real-Time Streaming:** `sse-starlette` (Server-Sent Events)
-- **Validation & AST Parsing:** PyYAML, JSONSchema, custom platform-specific validation rules
-- **Frontend & UI:** Modern Vanilla CSS (Dark mode & Glassmorphic aesthetics), HTML5, Jinja2 Templates
+- **🔌 Plug & Play Extensibility**
+  Add support for new programming languages or CI platforms in minutes without modifying core engine logic.
 
 ---
 
-## 🏗️ Architecture & Workflow
+## 🧩 1-Minute Plug & Play Extensibility
+
+### Add a New Language Plugin (e.g. PHP)
+Create `app/core/detectors/php_detector.py` inheriting `BaseDetector`:
+
+```python
+class PhpDetector(BaseDetector):
+    @property
+    def language(self) -> str:
+        return "php"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("shivammathur/setup-php@v2", "php-version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("UsePhpVersion@0", "versionSpec"),
+        }
+
+    @property
+    def dependency_markers(self) -> dict[str, DependencyInfo]:
+        return {
+            "composer.json": DependencyInfo(
+                manager="composer", language="php",
+                install_command="composer install",
+                runner_image="php:8.3-fpm-alpine",
+                app_type="runtime_service",
+            ),
+        }
+```
+*RepoFlow automatically registers the plugin, verifies lockfiles on disk, and renders templates without touching central core files.*
+
+### Add a New CI/CD Platform (e.g. GitLab CI)
+1. **Platform Enum**: Add `GITLAB_CI = "gitlab_ci"` to `Platform` in `app/core/platform_detect.py`.
+2. **Prompt Template**: Add Jinja2 template `app/prompts/gitlab_ci.j2`.
+3. **Validation Schema**: Add JSON Schema `app/schemas/gitlab_ci.schema.json`.
+4. **UI Option**: Add `<option value="gitlab_ci">` to `app/templates/index.html`.
+
+---
+
+## 🏗️ System Architecture
 
 ```mermaid
 flowchart TD
-    A[User Repository / Remote Git URL] --> B[Repo Analyzer]
-    B --> C[Stack & Platform Detection]
-    C --> D[LLM CI Pipeline Generator]
-    D --> E[Multi-Pass Validator]
-    E -->|Validation Fail| F[Self-Healing Repair Loop]
+    A[User Repository / Remote Git URL] --> B[Repo Analyzer & Detector Plugins]
+    B --> C[Universal SPA vs Service Classifier]
+    C --> D[LLM Pipeline Generator]
+    D --> E[Multi-Pass AST & Schema Validator]
+    E -->|Validation Fail| F[Autonomous Self-Healing Loop]
     F --> D
-    E -->|Validation Pass| G[Verified CI Pipeline YAML]
-    G --> H[Web UI & Real-Time SSE Progress Engine]
+    E -->|Validation Pass| G[Verified Production CI Pipeline YAML]
+    G --> H[Web Dashboard & SSE Live Stream]
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites
-- **Python 3.11+**
-- **Git**
-- An API Key for **Google Gemini** or **Groq**
-
-### 2. Installation
-
-Clone the repository and set up a virtual environment:
+### Option 1 — Local Setup
 
 ```bash
+# 1. Clone & setup virtual environment
 git clone https://github.com/Soo-de/RepoFlow.git
 cd RepoFlow
-
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-```
 
-### 3. Environment Configuration
-
-Create a `.env` file from `.env.example`:
-
-```bash
+# 2. Configure API key
 cp .env.example .env
-```
+# Set GEMINI_API_KEY=your_key in .env
 
-Add your API credentials to `.env`:
-
-```env
-LLM_PROVIDER=auto
-GEMINI_API_KEY=your_gemini_api_key_here
-# GROQ_API_KEY=your_groq_api_key_here
-```
-
-### 4. Run the Application
-
-Start the FastAPI development server:
-
-```bash
+# 3. Start development server
 uvicorn app.main:app --reload --port 8000
 ```
+Navigate to `http://localhost:8000`.
 
-Open your browser and navigate to `http://localhost:8000`.
+### Option 2 — Docker Compose
+
+```bash
+docker-compose up -d --build
+```
 
 ---
 
@@ -110,24 +119,24 @@ Open your browser and navigate to `http://localhost:8000`.
 ```text
 RepoFlow/
 ├── app/
-│   ├── core/           # Repository analysis, LLM client, self-healing & validation
-│   ├── jobs/           # In-memory job store & background job manager
-│   ├── models/         # Pydantic schemas and request models
-│   ├── prompts/        # Jinja2 prompt templates for target platforms
-│   ├── routes/         # FastAPI endpoints (generate, jobs, health)
-│   ├── static/         # CSS styles and frontend assets
-│   ├── templates/      # Jinja2 HTML templates for Web UI
+│   ├── core/           # Analysis engine, AST validation, LLM client & pipeline logic
+│   │   └── detectors/  # 11 Ecosystem plugins (Python, Node, C#, Go, Rust, Java, etc.)
+│   ├── jobs/           # In-memory store & background job manager
+│   ├── models/         # Pydantic API request & response schemas
+│   ├── prompts/        # Jinja2 prompt templates (github_actions.j2, azure_pipelines.j2)
+│   ├── routes/         # FastAPI REST endpoints & SSE event streams
+│   ├── schemas/        # Platform JSON validation schemas
+│   ├── static/         # Glassmorphic UI stylesheet & static assets
+│   ├── templates/      # Web UI HTML templates
 │   └── main.py         # Application entry point
 ├── tests/              # Pytest unit and integration test suite
-├── pyproject.toml      # Project dependencies & build configuration
-└── .env.example        # Environment variable template
+├── docker-compose.yml  # Multi-container local deployment
+└── pyproject.toml      # Dependency definitions & build config
 ```
 
 ---
 
-## 🧪 Running Tests
-
-Run the test suite using `pytest`:
+## 🧪 Testing
 
 ```bash
 pytest

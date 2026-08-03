@@ -42,31 +42,22 @@ class DetectorRegistry:
 
 
 def _build_default_registry() -> DetectorRegistry:
-    """Construct and populate the registry with all built-in detectors."""
-    from app.core.detectors.python_detector import PythonDetector
-    from app.core.detectors.node_detector import NodeDetector
-    from app.core.detectors.go_detector import GoDetector
-    from app.core.detectors.rust_detector import RustDetector
-    from app.core.detectors.java_detector import JavaDetector
-    from app.core.detectors.c_detector import CDetector
-    from app.core.detectors.ruby_detector import RubyDetector
-    from app.core.detectors.php_detector import PhpDetector
-    from app.core.detectors.swift_detector import SwiftDetector
-    from app.core.detectors.kotlin_detector import KotlinDetector
-    from app.core.detectors.csharp_detector import CSharpDetector
+    """Dynamically discover and register all BaseDetector subclasses in app.core.detectors."""
+    import importlib
+    import pkgutil
+    import app.core.detectors as detectors_pkg
 
     registry = DetectorRegistry()
-    registry.register(PythonDetector())
-    registry.register(NodeDetector())
-    registry.register(GoDetector())
-    registry.register(RustDetector())
-    registry.register(JavaDetector())
-    registry.register(CDetector())
-    registry.register(RubyDetector())
-    registry.register(PhpDetector())
-    registry.register(SwiftDetector())
-    registry.register(KotlinDetector())
-    registry.register(CSharpDetector())
+    for _, module_name, _ in pkgutil.iter_modules(detectors_pkg.__path__):
+        if module_name in ("base", "registry"):
+            continue
+        mod = importlib.import_module(f"app.core.detectors.{module_name}")
+        for attr_name in dir(mod):
+            attr = getattr(mod, attr_name)
+            if isinstance(attr, type) and issubclass(attr, BaseDetector) and attr is not BaseDetector:
+                # Avoid duplicate registration if imported multiple times
+                if not any(isinstance(existing, attr) for existing in registry.detectors):
+                    registry.register(attr())
     return registry
 
 
