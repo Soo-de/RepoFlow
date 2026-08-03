@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo
+from app.core.platform_detect import Platform
 
 
 class CDetector(BaseDetector):
@@ -9,6 +10,12 @@ class CDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "c"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("cmake-action", "version"),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:

@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo
+from app.core.platform_detect import Platform
 
 
 class GoDetector(BaseDetector):
@@ -8,6 +9,13 @@ class GoDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "go"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-go@v5", "go-version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("GoTool@0", "version"),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:
@@ -30,6 +38,19 @@ class GoDetector(BaseDetector):
         self, directory: Path, matched_marker: str, base_info: DependencyInfo,
     ) -> DependencyInfo:
         lockfile = "go.sum" if (directory / "go.sum").exists() else None
+        is_hugo_site = (directory / "hugo.toml").exists() or (directory / "config.toml").exists()
+
+        if is_hugo_site:
+            app_type = "static_frontend"
+            publish_dir = "public"
+            runner_image = "nginx:alpine"
+            runner_entrypoint = 'nginx -g "daemon off;"'
+        else:
+            app_type = "runtime_service"
+            publish_dir = None
+            runner_image = "alpine"
+            runner_entrypoint = "./main"
+
         return DependencyInfo(
             manager=base_info.manager,
             language=base_info.language,
@@ -38,6 +59,10 @@ class GoDetector(BaseDetector):
             publish_command=base_info.publish_command,
             manifest_file=base_info.manifest_file or matched_marker,
             lockfile=lockfile,
+            runner_image=runner_image,
+            runner_entrypoint=runner_entrypoint,
+            app_type=app_type,
+            publish_dir=publish_dir,
         )
 
     @property

@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo
+from app.core.platform_detect import Platform
 
 
 class CSharpDetector(BaseDetector):
@@ -8,6 +9,13 @@ class CSharpDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "csharp"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-dotnet@v4", "dotnet-version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("UseDotNet@2", "version"),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:
@@ -28,10 +36,6 @@ class CSharpDetector(BaseDetector):
                 manifest_file="global.json",
                 cache_path="$(Pipeline.Workspace)/.nuget/packages",
                 cache_env_var="NUGET_PACKAGES",
-                azure_setup_task="UseDotNet@2",
-                azure_version_key="version",
-                github_setup_action="actions/setup-dotnet@v4",
-                github_version_key="dotnet-version",
             ),
             "packages.config": DependencyInfo(
                 manager="nuget", language="csharp",
@@ -40,10 +44,6 @@ class CSharpDetector(BaseDetector):
                 manifest_file="packages.config",
                 cache_path="$(Pipeline.Workspace)/.nuget/packages",
                 cache_env_var="NUGET_PACKAGES",
-                azure_setup_task="UseDotNet@2",
-                azure_version_key="version",
-                github_setup_action="actions/setup-dotnet@v4",
-                github_version_key="dotnet-version",
             ),
             "NuGet.Config": DependencyInfo(
                 manager="dotnet", language="csharp",
@@ -52,10 +52,6 @@ class CSharpDetector(BaseDetector):
                 manifest_file="NuGet.Config",
                 cache_path="$(Pipeline.Workspace)/.nuget/packages",
                 cache_env_var="NUGET_PACKAGES",
-                azure_setup_task="UseDotNet@2",
-                azure_version_key="version",
-                github_setup_action="actions/setup-dotnet@v4",
-                github_version_key="dotnet-version",
             ),
         }
 
@@ -105,6 +101,8 @@ class CSharpDetector(BaseDetector):
 
         lockfile = "packages.lock.json" if (directory / "packages.lock.json").exists() else None
 
+        entrypoint = f"dotnet {target_file.stem}.dll"
+
         return DependencyInfo(
             manager="dotnet",
             language="csharp",
@@ -116,10 +114,10 @@ class CSharpDetector(BaseDetector):
             working_dir=working_dir,
             cache_path="$(Pipeline.Workspace)/.nuget/packages",
             cache_env_var="NUGET_PACKAGES",
-            azure_setup_task="UseDotNet@2",
-            azure_version_key="version",
-            github_setup_action="actions/setup-dotnet@v4",
-            github_version_key="dotnet-version",
+            runner_image="mcr.microsoft.com/dotnet/aspnet:10.0",
+            runner_entrypoint=entrypoint,
+            app_type="runtime_service",
+            publish_dir="/app/publish",
         )
 
     def resolve_dependency_info(

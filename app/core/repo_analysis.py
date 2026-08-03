@@ -4,6 +4,8 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 from app.core.detectors import default_registry, DetectorRegistry
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo
+from app.core.platform_detect import Platform
 
 logger = logging.getLogger(__name__)
 
@@ -30,19 +32,6 @@ class RepoAnalysis:
     primary_language: str = "unknown"
     languages: dict[str, int] = field(default_factory=dict)
     runtime_version: str | None = None
-    dependency_manager: str = "unknown"
-    manifest_file: str | None = None
-    lockfile: str | None = None
-    working_dir: str | None = None
-    cache_path: str = "$(Pipeline.Workspace)/.cache"
-    cache_env_var: str | None = None
-    azure_setup_task: str = "UsePythonVersion@0"
-    azure_version_key: str = "versionSpec"
-    github_setup_action: str = "actions/setup-python@v5"
-    github_version_key: str = "python-version"
-    install_command: str = ""
-    build_command: str | None = None
-    publish_command: str | None = None
     test_framework: str | None = None
     test_command: str | None = None
     has_dockerfile: bool = False
@@ -54,6 +43,66 @@ class RepoAnalysis:
     entry_points: list[str] = field(default_factory=list)
     default_branch: str = "main"
     image_name: str = ""
+    matched_detector: BaseDetector | None = None
+    dependency_info: DependencyInfo | None = None
+
+    @property
+    def dependency_manager(self) -> str:
+        return self.dependency_info.manager if self.dependency_info else "unknown"
+
+    @property
+    def manifest_file(self) -> str | None:
+        return self.dependency_info.manifest_file if self.dependency_info else None
+
+    @property
+    def lockfile(self) -> str | None:
+        return self.dependency_info.lockfile if self.dependency_info else None
+
+    @property
+    def working_dir(self) -> str | None:
+        return self.dependency_info.working_dir if self.dependency_info else None
+
+    @property
+    def cache_path(self) -> str:
+        return (self.dependency_info.cache_path if self.dependency_info and self.dependency_info.cache_path else "$(Pipeline.Workspace)/.cache")
+
+    @property
+    def cache_env_var(self) -> str | None:
+        return self.dependency_info.cache_env_var if self.dependency_info else None
+
+    @property
+    def install_command(self) -> str:
+        return self.dependency_info.install_command if self.dependency_info else ""
+
+    @property
+    def build_command(self) -> str | None:
+        return self.dependency_info.build_command if self.dependency_info else None
+
+    @property
+    def publish_command(self) -> str | None:
+        return self.dependency_info.publish_command if self.dependency_info else None
+
+    @property
+    def runner_image(self) -> str | None:
+        return self.dependency_info.runner_image if self.dependency_info else None
+
+    @property
+    def runner_entrypoint(self) -> str | None:
+        return self.dependency_info.runner_entrypoint if self.dependency_info else None
+
+    @property
+    def app_type(self) -> str:
+        return self.dependency_info.app_type if self.dependency_info else "runtime_service"
+
+    @property
+    def publish_dir(self) -> str | None:
+        return self.dependency_info.publish_dir if self.dependency_info else None
+
+    def get_platform_setup(self, platform: Platform) -> PlatformSetupInfo | None:
+        """Delegate platform-specific setup task/action lookup to the matched detector plugin."""
+        if self.matched_detector:
+            return self.matched_detector.platform_setups.get(platform)
+        return None
 
 
 def analyze(repo_dir: Path, registry: DetectorRegistry | None = None) -> RepoAnalysis:
@@ -106,81 +155,57 @@ def _scan_languages(repo_dir: Path, result: RepoAnalysis, registry: DetectorRegi
         result.primary_language = "unknown"
 
 
+def _format_dependency_info(repo_dir: Path, search_dir: Path, dep_info: DependencyInfo) -> DependencyInfo:
+    """Format manifest_file, lockfile, and working_dir with relative paths if nested."""
+    working_dir = dep_info.working_dir
+    if not working_dir and search_dir != repo_dir:
+        working_dir = search_dir.relative_to(repo_dir).as_posix()
+
+    manifest = dep_info.manifest_file
+    if working_dir and manifest and not ("/" in manifest):
+        manifest = f"{working_dir}/{manifest}"
+
+    lockfile = dep_info.lockfile
+    if working_dir and lockfile and not ("/" in lockfile):
+        lockfile = f"{working_dir}/{lockfile}"
+
+    return DependencyInfo(
+        manager=dep_info.manager,
+        language=dep_info.language,
+        install_command=dep_info.install_command,
+        build_command=dep_info.build_command,
+        publish_command=dep_info.publish_command,
+        manifest_file=manifest,
+        lockfile=lockfile,
+        working_dir=working_dir,
+        cache_path=dep_info.cache_path,
+        cache_env_var=dep_info.cache_env_var,
+        runner_image=dep_info.runner_image,
+        runner_entrypoint=dep_info.runner_entrypoint,
+        app_type=dep_info.app_type,
+        publish_dir=dep_info.publish_dir,
+    )
+
+
 def _detect_dependency_manager(
     repo_dir: Path, result: RepoAnalysis, registry: DetectorRegistry,
 ) -> None:
     """Identify package manager by querying each detector's dependency markers."""
-    # Check root level first, then immediate subdirectories
     for search_dir in _search_dirs(repo_dir):
         for detector in registry.detectors:
-            # First check custom detector method (e.g. C# .csproj / .sln rglob)
             custom_info = detector.detect_dependency_info(search_dir)
             if custom_info:
-                result.dependency_manager = custom_info.manager
-                result.manifest_file = custom_info.manifest_file
-                result.lockfile = custom_info.lockfile
-                # Set working_dir if defined or if search_dir is a subdirectory
-                if custom_info.working_dir:
-                    result.working_dir = custom_info.working_dir
-                elif search_dir != repo_dir:
-                    result.working_dir = search_dir.relative_to(repo_dir).as_posix()
-                else:
-                    result.working_dir = None
-
-                if result.working_dir and custom_info.lockfile and not ("/" in custom_info.lockfile):
-                    result.lockfile = f"{result.working_dir}/{custom_info.lockfile}"
-
-                result.cache_path = custom_info.cache_path
-                result.cache_env_var = custom_info.cache_env_var
-                result.azure_setup_task = custom_info.azure_setup_task
-                result.azure_version_key = custom_info.azure_version_key
-                result.github_setup_action = custom_info.github_setup_action
-                result.github_version_key = custom_info.github_version_key
-                result.install_command = custom_info.install_command
-                result.build_command = custom_info.build_command
-                result.publish_command = custom_info.publish_command
+                result.matched_detector = detector
+                result.dependency_info = _format_dependency_info(repo_dir, search_dir, custom_info)
                 if result.primary_language == "unknown":
                     result.primary_language = custom_info.language
                 return
 
-            # Then check exact marker files
             for marker_file, dep_info in detector.dependency_markers.items():
                 if (search_dir / marker_file).exists():
                     resolved = detector.resolve_dependency_info(search_dir, marker_file, dep_info)
-                    result.dependency_manager = resolved.manager
-
-                    # Calculate working_dir for subfolders if not explicitly set
-                    if resolved.working_dir:
-                        result.working_dir = resolved.working_dir
-                    elif search_dir != repo_dir:
-                        result.working_dir = search_dir.relative_to(repo_dir).as_posix()
-                    else:
-                        result.working_dir = None
-
-                    # Format manifest_file with working_dir prefix if nested
-                    if result.working_dir and not (resolved.manifest_file and "/" in resolved.manifest_file):
-                        result.manifest_file = f"{result.working_dir}/{resolved.manifest_file or marker_file}"
-                    else:
-                        result.manifest_file = resolved.manifest_file or marker_file
-
-                    # Format lockfile with working_dir prefix if nested
-                    if resolved.lockfile:
-                        if result.working_dir and not ("/" in resolved.lockfile):
-                            result.lockfile = f"{result.working_dir}/{resolved.lockfile}"
-                        else:
-                            result.lockfile = resolved.lockfile
-                    else:
-                        result.lockfile = None
-
-                    result.cache_path = resolved.cache_path
-                    result.cache_env_var = resolved.cache_env_var
-                    result.azure_setup_task = resolved.azure_setup_task
-                    result.azure_version_key = resolved.azure_version_key
-                    result.github_setup_action = resolved.github_setup_action
-                    result.github_version_key = resolved.github_version_key
-                    result.install_command = resolved.install_command
-                    result.build_command = resolved.build_command
-                    result.publish_command = resolved.publish_command
+                    result.matched_detector = detector
+                    result.dependency_info = _format_dependency_info(repo_dir, search_dir, resolved)
                     if result.primary_language == "unknown":
                         result.primary_language = resolved.language
                     return
