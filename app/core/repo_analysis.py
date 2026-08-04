@@ -129,10 +129,8 @@ def analyze(repo_dir: Path, registry: DetectorRegistry | None = None) -> RepoAna
     _detect_monorepo(repo_dir, result, reg)
     _detect_default_branch(repo_dir, result)
 
-    logger.info(
-        "Analysis complete: language=%s, dep_manager=%s, manifest=%s, working_dir=%s, test=%s",
-        result.primary_language, result.dependency_manager, result.manifest_file, result.working_dir, result.test_framework,
-    )
+    from app.core.analysis_logger import log_analysis_summary
+    log_analysis_summary(result)
     return result
 
 

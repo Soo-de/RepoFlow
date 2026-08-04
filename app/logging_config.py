@@ -4,22 +4,31 @@ import sys
 from datetime import datetime, timezone
 
 
-class JSONFormatter(logging.Formatter):
+class ReadableFormatter(logging.Formatter):
+    """Formats log records into clean, human-readable terminal lines.
+
+    Preserves newlines in multiline blocks (e.g. repo analysis summaries)
+    and formats timestamps cleanly instead of escaping newlines as JSON string literals.
+    """
+
     def format(self, record: logging.LogRecord) -> str:
-        log_entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        msg = record.getMessage()
+        prefix = f"[{timestamp}] [{record.levelname}] [{record.name}]"
+
+        if "\n" in msg:
+            output = f"{prefix}:\n{msg}"
+        else:
+            output = f"{prefix}: {msg}"
+
         if record.exc_info and record.exc_info[0]:
-            log_entry["exception"] = self.formatException(record.exc_info)
-        return json.dumps(log_entry)
+            output += "\n" + self.formatException(record.exc_info)
+        return output
 
 
 def setup_logging(level: int = logging.INFO) -> None:
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JSONFormatter())
+    handler.setFormatter(ReadableFormatter())
 
     root = logging.getLogger()
     root.handlers.clear()
