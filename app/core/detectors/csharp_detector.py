@@ -11,10 +11,14 @@ class CSharpDetector(BaseDetector):
         return "csharp"
 
     @property
+    def default_runtime_version(self) -> str:
+        return "8.0"
+
+    @property
     def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
         return {
             Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-dotnet@v4", "dotnet-version"),
-            Platform.AZURE_PIPELINES: PlatformSetupInfo("UseDotNet@2", "version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("UseDotNet@2", "version", extra_inputs={"packageType": "sdk"}),
         }
 
     @property

@@ -25,6 +25,19 @@ def test_analyze_python_project(tmp_path):
     assert "main.py" in analysis.entry_points
 
 
+def test_python_project_default_version_isolated_from_node(tmp_path):
+    (tmp_path / "app.py").write_text("print('hello')", encoding="utf-8")
+    (tmp_path / "requirements.txt").write_text("requests", encoding="utf-8")
+    # Add a package.json to mimic a mixed directory or frontend assets subfolder
+    (tmp_path / "package.json").write_text('{"name": "assets", "engines": {"node": "20.x"}}', encoding="utf-8")
+
+    analysis = analyze(tmp_path)
+
+    assert analysis.primary_language == "python"
+    # Should use Python's default version (3.12), NOT Node's 20.x
+    assert analysis.runtime_version == "3.12"
+
+
 def test_analyze_node_project(tmp_path):
     (tmp_path / "index.ts").write_text("console.log('hi');", encoding="utf-8")
     (tmp_path / "package.json").write_text(
@@ -50,9 +63,9 @@ def test_analyze_node_project_default_version(tmp_path):
 
     analysis = analyze(tmp_path)
 
-    # When no .nvmrc or engines field is defined, default to 20.x LTS
+    # When no .nvmrc or engines field is defined, default to 20 LTS
     assert analysis.primary_language == "javascript"
-    assert analysis.runtime_version == "20.x"
+    assert analysis.runtime_version == "20"
     # When package-lock.json is missing, fall back to npm install instead of npm ci
     assert analysis.install_command == "npm install"
     assert analysis.lockfile is None

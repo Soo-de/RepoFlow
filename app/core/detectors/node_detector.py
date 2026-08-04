@@ -11,6 +11,10 @@ class NodeDetector(BaseDetector):
         return "javascript"
 
     @property
+    def default_runtime_version(self) -> str:
+        return "20"
+
+    @property
     def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
         return {
             Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-node@v4", "node-version"),
@@ -229,5 +233,5 @@ class NodeDetector(BaseDetector):
             except Exception:
                 pass
 
-        # 3. Fallback to default modern LTS version if no pinned version is specified
-        return "20.x"
+        # 3. If no pinned version found in files/package.json, return None (handled by default_runtime_version)
+        return None

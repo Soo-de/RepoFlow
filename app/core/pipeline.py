@@ -12,6 +12,8 @@ from app.core.prompt_builder import PromptBuilder
 from app.core.llm_client import LLMClient
 from app.core.validation import PipelineValidator, strip_markdown_fences
 from app.core.docker_service import build_docker_context
+from app.core.readiness import check_readiness, ReadinessError
+from app.core.debug_logging import log_model  # TEMPORARY: remove with debug_logging module
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,16 @@ async def execute(
             await _report("analyzing", f"Services: {', '.join(analysis.services_needed)}")
         await _report("analyzing", "Analysis complete")
 
+        log_model("RepoAnalysis", analysis)  # TEMPORARY
+
+        readiness = check_readiness(analysis)
+        for warning in readiness.warnings:
+            await _report("analyzing", f"⚠ {warning.message}")
+        if not readiness.can_proceed:
+            for blocker in readiness.blockers:
+                await _report("analyzing", f"✗ {blocker}")
+            raise ReadinessError(readiness.blockers)
+
         llm_client = _create_llm_client()
         try:
             # --- Stage 3: Dockerize ---
@@ -74,6 +86,8 @@ async def execute(
                 repo_url=repo_url,
             )
             analysis.dockerfile_content = docker_ctx.dockerfile_content
+
+            log_model("DockerContext", docker_ctx)  # TEMPORARY
 
             if docker_ctx.was_generated:
                 await _report("dockerizing", "Dockerfile generated via LLM")
@@ -131,7 +145,7 @@ async def execute(
                 for err in errors:
                     await _report("validating", f"  • {err}")
 
-            return PipelineResult.from_analysis(
+            result = PipelineResult.from_analysis(
                 analysis=analysis,
                 platform=detected_platform,
                 yaml_output=cleaned_yaml,
@@ -140,11 +154,15 @@ async def execute(
                 dockerfile_output=docker_ctx.dockerfile_content,
                 dockerfile_generated=docker_ctx.was_generated,
             )
+
+            log_model("PipelineResult", result)  # TEMPORARY
+
+            return result
         finally:
             await llm_client.close()
 
 
-    except CloneError:
+    except (CloneError, ReadinessError):
         raise
 
     except Exception as e:

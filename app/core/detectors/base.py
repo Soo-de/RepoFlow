@@ -12,6 +12,7 @@ class PlatformSetupInfo:
     """Platform-specific runtime setup action/task metadata for a language ecosystem."""
     task_or_action: str | None = None
     version_key: str | None = None
+    extra_inputs: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -120,6 +121,11 @@ class BaseDetector(ABC):
         Override in subclasses that use version pinning files.
         """
         return {}
+
+    @property
+    def default_runtime_version(self) -> str | None:
+        """Default stable/LTS version used when no version file is pinned in the repository."""
+        return None
 
     @property
     def entry_point_patterns(self) -> list[str]:

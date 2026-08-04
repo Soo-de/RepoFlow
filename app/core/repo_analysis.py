@@ -191,12 +191,30 @@ def _format_dependency_info(repo_dir: Path, search_dir: Path, dep_info: Dependen
     )
 
 
+def _get_prioritized_detectors(primary_language: str, detectors: list[BaseDetector]) -> list[BaseDetector]:
+    """Order detectors so that the detector matching primary_language (or its ecosystem) is checked first."""
+    if not primary_language or primary_language == "unknown":
+        return detectors
+
+    matching: list[BaseDetector] = []
+    others: list[BaseDetector] = []
+
+    for d in detectors:
+        if d.language == primary_language or primary_language in d.extension_map.values():
+            matching.append(d)
+        else:
+            others.append(d)
+
+    return matching + others
+
+
 def _detect_dependency_manager(
     repo_dir: Path, result: RepoAnalysis, registry: DetectorRegistry,
 ) -> None:
-    """Identify package manager by querying each detector's dependency markers."""
+    """Identify package manager by querying detectors prioritizing the primary language."""
+    detectors = _get_prioritized_detectors(result.primary_language, registry.detectors)
     for search_dir in _search_dirs(repo_dir):
-        for detector in registry.detectors:
+        for detector in detectors:
             custom_info = detector.detect_dependency_info(search_dir)
             if custom_info:
                 result.matched_detector = detector
@@ -218,9 +236,10 @@ def _detect_dependency_manager(
 def _detect_test_framework(
     repo_dir: Path, result: RepoAnalysis, registry: DetectorRegistry,
 ) -> None:
-    """Detect test framework by delegating to each detector's custom logic."""
+    """Detect test framework by delegating to detectors prioritizing the primary language."""
+    detectors = _get_prioritized_detectors(result.primary_language, registry.detectors)
     for search_dir in _search_dirs(repo_dir):
-        for detector in registry.detectors:
+        for detector in detectors:
             test_info = detector.detect_test_framework(search_dir)
             if test_info:
                 result.test_framework = test_info.framework
@@ -228,7 +247,7 @@ def _detect_test_framework(
                 return
 
     # Language-based built-in test defaults (Go and Rust have no config files)
-    for detector in registry.detectors:
+    for detector in detectors:
         if detector.language == result.primary_language and hasattr(detector, "default_test_info"):
             default = detector.default_test_info()
             result.test_framework = default.framework
@@ -332,19 +351,31 @@ def _detect_entry_points(
 def _detect_runtime_version(
     repo_dir: Path, result: RepoAnalysis, registry: DetectorRegistry,
 ) -> None:
-    """Delegate runtime version detection to the matching detector."""
-    for detector in registry.detectors:
-        if detector.language == result.primary_language:
-            version = detector.detect_runtime_version(repo_dir)
-            if version:
-                result.runtime_version = version
-                return
+    """Delegate runtime version detection strictly to the primary language detector, falling back to its default."""
+    primary_detector = result.matched_detector
+    if not primary_detector:
+        for d in registry.detectors:
+            if d.language == result.primary_language or result.primary_language in d.extension_map.values():
+                primary_detector = d
+                break
 
-    # Fallback: try all detectors in case language wasn't matched
+    if primary_detector:
+        version = primary_detector.detect_runtime_version(repo_dir)
+        if version:
+            result.runtime_version = version
+            return
+        if primary_detector.default_runtime_version:
+            result.runtime_version = primary_detector.default_runtime_version
+            return
+
+    # Fallback if primary language was unknown: try all detectors
     for detector in registry.detectors:
         version = detector.detect_runtime_version(repo_dir)
         if version:
             result.runtime_version = version
+            return
+        if detector.default_runtime_version:
+            result.runtime_version = detector.default_runtime_version
             return
 
 
