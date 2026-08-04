@@ -4,7 +4,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 from app.core.detectors import default_registry, DetectorRegistry
-from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo
+from app.core.detectors.base import BaseDetector, DependencyInfo, EnvironmentRequirement, PlatformSetupInfo
 from app.core.platform_detect import Platform
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,17 @@ class RepoAnalysis:
 
     @property
     def publish_dir(self) -> str | None:
-        return self.dependency_info.publish_dir if self.dependency_info else None
+        if self.dependency_info:
+            return self.dependency_info.build_output_path or self.dependency_info.publish_dir
+        return None
+
+    @property
+    def environment_requirements(self) -> list[EnvironmentRequirement]:
+        return self.dependency_info.environment_requirements if self.dependency_info else []
+
+    @property
+    def build_output_path(self) -> str | None:
+        return self.dependency_info.build_output_path if self.dependency_info else None
 
     def get_platform_setup(self, platform: Platform) -> PlatformSetupInfo | None:
         """Delegate platform-specific setup task/action lookup to the matched detector plugin."""
@@ -188,6 +198,8 @@ def _format_dependency_info(repo_dir: Path, search_dir: Path, dep_info: Dependen
         runner_entrypoint=dep_info.runner_entrypoint,
         app_type=dep_info.app_type,
         publish_dir=dep_info.publish_dir,
+        environment_requirements=dep_info.environment_requirements,
+        build_output_path=dep_info.build_output_path,
     )
 
 

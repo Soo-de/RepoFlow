@@ -46,7 +46,9 @@ Stage 1 — Builder:
   - Run the build or publish command if provided{% if analysis.publish_command %} (Use Publish Command: `{{ analysis.publish_command }}`){% endif %}. Ensure all build artifacts are published to a dedicated output directory (e.g. `/app/publish` or `/app/dist`) so that published binaries are available for Stage 2.
 
 - Application Type: {{ analysis.app_type }}
-{% if analysis.publish_dir %}
+{% if analysis.build_output_path %}
+- Resolved Build Output Path: {{ analysis.build_output_path }}
+{% elif analysis.publish_dir %}
 - Compiled Publish Output Directory: {{ analysis.publish_dir }}
 {% endif %}
 {% if analysis.runner_image %}
@@ -55,12 +57,25 @@ Stage 1 — Builder:
 {% if analysis.runner_entrypoint %}
 - Recommended Execution Entrypoint: {{ analysis.runner_entrypoint }}
 {% endif %}
+{% if analysis.environment_requirements %}
+
+Environment Requirements:
+{% for req in analysis.environment_requirements %}
+- {{ req.key }}: {{ req.value }} ({{ req.reason }})
+{% endfor %}
+{% endif %}
 
 Stage 2 — Runner:
   - Render Stage 2 based on Application Type:
-    * If Application Type is `static_frontend`: Use `nginx:alpine` as runner base image, copy compiled static web assets from `/app/{{ analysis.publish_dir | default('dist') }}` into NGINX document root `/usr/share/nginx/html`, EXPOSE port 80, and set CMD to `["nginx", "-g", "daemon off;"]`.
+    * If Application Type is `static_frontend`: Use `nginx:alpine` as runner base image, remove default NGINX content with `RUN rm -rf /usr/share/nginx/html/*`, then copy compiled static web assets from `/app/{{ analysis.build_output_path or analysis.publish_dir or 'dist' }}` into NGINX document root `/usr/share/nginx/html`, EXPOSE port 80, and set CMD to `["nginx", "-g", "daemon off;"]`.
     * If Application Type is `runtime_service`: Use the recommended runner base image (`{{ analysis.runner_image }}`), set WORKDIR to /app, copy published build artifacts from builder stage output directory into `/app`, EXPOSE application port, and set CMD/ENTRYPOINT to execute `{{ analysis.runner_entrypoint }}`.
   - Set environment variables for production execution.
+{% if analysis.environment_requirements %}
+  - Set the following environment variables in the Dockerfile using ENV:
+{% for req in analysis.environment_requirements if req.kind == "env_var" %}
+    ENV {{ req.key }}="{{ req.value }}"
+{% endfor %}
+{% endif %}
 
 OUTPUT RULES:
 1. Output ONLY a valid Dockerfile. No markdown fences, no explanations, no surrounding text.

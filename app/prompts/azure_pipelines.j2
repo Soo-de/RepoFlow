@@ -69,6 +69,9 @@ stages:
 {% if analysis.cache_env_var %}
       {{ analysis.cache_env_var }}: {{ analysis.cache_path }}
 {% endif %}
+{% for req in analysis.environment_requirements if req.kind == "env_var" %}
+      {{ req.key }}: '{{ req.value }}'
+{% endfor %}
     steps:
       <steps go here>
 
@@ -94,6 +97,14 @@ b. Cache dependencies using `Cache@2` BEFORE the install step.
    IMPORTANT for `Cache@2`:
    - Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
    - Every job containing `Cache@2` MUST declare the cache variable under `variables:` at the job level (e.g. `{{ analysis.cache_env_var }}: {{ analysis.cache_path }}`) so the package manager populates the cached path during installation.
+{% endif %}
+{% if analysis.environment_requirements %}
+   IMPORTANT: Every job MUST include the following environment variables under `variables:` at the job level:
+{% for req in analysis.environment_requirements if req.kind == "env_var" %}
+   - `{{ req.key }}: '{{ req.value }}'` ({{ req.reason }})
+{% endfor %}
+{% endif %}
+{% if analysis.manifest_file and analysis.cache_path %}
    Example:
    - task: Cache@2
      displayName: 'Cache dependencies'

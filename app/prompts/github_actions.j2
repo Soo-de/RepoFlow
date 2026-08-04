@@ -55,6 +55,14 @@ Use a SINGLE "test" job containing applicable setup, cache, install, test, and u
 {% else %}
 Use a SINGLE "ci" job containing applicable setup, cache, and install steps listed below.
 {% endif %}
+{% if analysis.environment_requirements %}
+
+ENVIRONMENT VARIABLES:
+Every job MUST include the following environment variables under `env:` at the job level:
+{% for req in analysis.environment_requirements if req.kind == "env_var" %}
+  {{ req.key }}: '{{ req.value }}'
+{% endfor %}
+{% endif %}
 
 STEP DETAILS (in order within each job):
 a. Checkout using `actions/checkout@v4`.
