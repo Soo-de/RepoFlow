@@ -98,6 +98,28 @@ def test_analyze_csharp_project_with_sln(tmp_path):
     assert analysis.install_command == "dotnet restore App.sln"
     assert analysis.build_command == "dotnet build App.sln --configuration Release --no-restore"
     assert analysis.publish_command == "dotnet publish App.sln --configuration Release -o /app/publish"
+    assert "WebApi/WebApi.csproj" in analysis.additional_manifests
+    assert analysis.runner_entrypoint == "dotnet WebApi.dll"
+    assert analysis.services_needed == []
+
+
+def test_analyze_csharp_service_detection(tmp_path):
+    # Embedded/in-process DBs like SQLite require no external service container
+    (tmp_path / "App.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk.Web">'
+        '<ItemGroup>'
+        '<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />'
+        '<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />'
+        '</ItemGroup>'
+        '</Project>',
+        encoding="utf-8"
+    )
+
+    analysis = analyze(tmp_path)
+
+    # SqlServer triggers external 'mssql' service, while embedded Sqlite is ignored for services
+    assert "mssql" in analysis.services_needed
+    assert "sqlite" not in analysis.services_needed
 
 
 def test_analyze_csharp_project_nested_without_sln(tmp_path):
@@ -130,6 +152,7 @@ def test_analyze_csharp_project_with_slnx(tmp_path):
     assert analysis.install_command == "dotnet restore App.slnx"
     assert analysis.build_command == "dotnet build App.slnx --configuration Release --no-restore"
     assert analysis.publish_command == "dotnet publish App.slnx --configuration Release -o /app/publish"
+    assert analysis.runner_entrypoint == "dotnet WebApi.dll"
 
 
 def test_analyze_nested_node_project(tmp_path):

@@ -63,6 +63,10 @@ class RepoAnalysis:
         return self.dependency_info.lockfile if self.dependency_info else None
 
     @property
+    def additional_manifests(self) -> list[str]:
+        return self.dependency_info.additional_manifests if self.dependency_info else []
+
+    @property
     def working_dir(self) -> str | None:
         return self.dependency_info.working_dir if self.dependency_info else None
 
@@ -181,6 +185,11 @@ def _format_dependency_info(repo_dir: Path, search_dir: Path, dep_info: Dependen
     if working_dir and lockfile and not ("/" in lockfile):
         lockfile = f"{working_dir}/{lockfile}"
 
+    additional_manifests = [
+        f"{working_dir}/{am}" if (working_dir and not ("/" in am)) else am
+        for am in dep_info.additional_manifests
+    ]
+
     return DependencyInfo(
         manager=dep_info.manager,
         language=dep_info.language,
@@ -198,6 +207,7 @@ def _format_dependency_info(repo_dir: Path, search_dir: Path, dep_info: Dependen
         publish_dir=dep_info.publish_dir,
         environment_requirements=dep_info.environment_requirements,
         build_output_path=dep_info.build_output_path,
+        additional_manifests=additional_manifests,
     )
 
 
@@ -274,16 +284,24 @@ def _detect_services(
     for search_dir in _search_dirs(repo_dir):
         for detector in registry.detectors:
             for dep_file in detector.dep_files_for_service_scan:
-                path = search_dir / dep_file
-                if not path.exists():
-                    continue
-                try:
-                    content = path.read_text(encoding="utf-8").lower()
-                    for hint in detector.service_hints:
-                        if hint.library.lower() in content:
-                            services.add(hint.service)
-                except OSError:
-                    continue
+                if "*" in dep_file:
+                    target_paths = [
+                        p for p in search_dir.rglob(dep_file)
+                        if not any(skip in p.parts for skip in SKIP_DIRS)
+                    ]
+                else:
+                    target_paths = [search_dir / dep_file]
+
+                for path in target_paths:
+                    if not path.is_file():
+                        continue
+                    try:
+                        content = path.read_text(encoding="utf-8").lower()
+                        for hint in detector.service_hints:
+                            if hint.library.lower() in content:
+                                services.add(hint.service)
+                    except OSError:
+                        continue
 
     result.services_needed = sorted(services)
 
