@@ -10,6 +10,9 @@ Generate a production-ready, multi-stage Dockerfile based on the following proje
 {% if analysis.manifest_file %}
 - Manifest File: {{ analysis.manifest_file }}
 {% endif %}
+{% if analysis.additional_manifests %}
+- Additional Manifest / Project Files: {{ analysis.additional_manifests | join(', ') }}
+{% endif %}
 {% if analysis.lockfile %}
 - Lock File: {{ analysis.lockfile }}
 {% endif %}
@@ -35,11 +38,11 @@ Stage 1 — Builder:
   - Use an official SDK/builder base image with a valid version tag matching the primary language and runtime version (do NOT use `.x` in Docker image tags).
   - Set WORKDIR to /app.
 {% if analysis.working_dir %}
-  - Copy dependency manifest{% if analysis.lockfile %} ({{ analysis.manifest_file }} and {{ analysis.lockfile }}){% endif %} from `{{ analysis.working_dir }}/` into `./` before running dependency installation.
+  - Copy all dependency manifest and project files{% if analysis.manifest_file or analysis.additional_manifests or analysis.lockfile %} ({{ (([analysis.manifest_file] if analysis.manifest_file else []) + analysis.additional_manifests + ([analysis.lockfile] if analysis.lockfile else [])) | join(', ') }}){% endif %} from `{{ analysis.working_dir }}/` into `./` before running dependency installation. Ensure all primary and additional manifest/project files are copied (preserving folder structure if nested) so dependency restoration commands can resolve all internal references.
   - Install dependencies using the detected install command.
   - Copy remaining application source files from `{{ analysis.working_dir }}/` into `./`.
 {% else %}
-  - Copy dependency manifest files{% if analysis.lockfile %} ({{ analysis.manifest_file }} and {{ analysis.lockfile }}){% endif %} before running dependency installation.
+  - Copy all dependency manifest and project files{% if analysis.manifest_file or analysis.additional_manifests or analysis.lockfile %} ({{ (([analysis.manifest_file] if analysis.manifest_file else []) + analysis.additional_manifests + ([analysis.lockfile] if analysis.lockfile else [])) | join(', ') }}){% endif %} before running dependency installation. Ensure all primary and additional manifest/project files are copied (preserving folder structure if nested) so dependency restoration commands can resolve all internal references.
   - Install dependencies using the detected install command.
   - Copy remaining application source files.
 {% endif %}

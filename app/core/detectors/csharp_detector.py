@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo, ServiceHint
 from app.core.platform_detect import Platform
 
 
@@ -60,6 +60,23 @@ class CSharpDetector(BaseDetector):
         }
 
     @property
+    def service_hints(self) -> list[ServiceHint]:
+        return [
+            ServiceHint("Microsoft.EntityFrameworkCore.SqlServer", "mssql"),
+            ServiceHint("Microsoft.Data.SqlClient", "mssql"),
+            ServiceHint("System.Data.SqlClient", "mssql"),
+            ServiceHint("Npgsql", "postgres"),
+            ServiceHint("Pomelo.EntityFrameworkCore.MySql", "mysql"),
+            ServiceHint("MySql.Data", "mysql"),
+            ServiceHint("StackExchange.Redis", "redis"),
+            ServiceHint("MongoDB.Driver", "mongodb"),
+        ]
+
+    @property
+    def dep_files_for_service_scan(self) -> list[str]:
+        return ["*.csproj", "packages.config"]
+
+    @property
     def entry_point_patterns(self) -> list[str]:
         return ["Program.cs", "Startup.cs"]
 
@@ -111,7 +128,16 @@ class CSharpDetector(BaseDetector):
 
         lockfile = "packages.lock.json" if (directory / "packages.lock.json").exists() else None
 
-        entrypoint = f"dotnet {target_file.stem}.dll"
+        entrypoint = self._resolve_entrypoint_dll(target_file, csproj_files)
+
+        # If a solution file (.sln / .slnx) is selected, include referenced .csproj project files as additional manifests
+        additional_manifests: list[str] = []
+        if target_file.suffix in (".sln", ".slnx"):
+            for csproj in csproj_files:
+                try:
+                    additional_manifests.append(csproj.relative_to(directory).as_posix())
+                except ValueError:
+                    additional_manifests.append(csproj.name)
 
         return DependencyInfo(
             manager="dotnet",
@@ -128,6 +154,7 @@ class CSharpDetector(BaseDetector):
             runner_entrypoint=entrypoint,
             app_type="runtime_service",
             publish_dir="/app/publish",
+            additional_manifests=additional_manifests,
         )
 
     def resolve_dependency_info(
@@ -195,3 +222,37 @@ class CSharpDetector(BaseDetector):
                 pass
 
         return None
+
+    def _resolve_entrypoint_dll(self, target_file: Path, csproj_files: list[Path]) -> str:
+        """Determine the main executable DLL name.
+
+        For solution files (.sln / .slnx), inspect project files to find the web or
+        executable application assembly containing Program.cs/Startup.cs or Web SDKs.
+        """
+        if target_file.suffix == ".csproj" or not csproj_files:
+            return f"dotnet {target_file.stem}.dll"
+
+        # 1. Search for .csproj in directory containing Program.cs or Startup.cs
+        for csproj in csproj_files:
+            csproj_dir = csproj.parent
+            if (csproj_dir / "Program.cs").exists() or (csproj_dir / "Startup.cs").exists():
+                return f"dotnet {csproj.stem}.dll"
+
+        # 2. Search for .csproj using Web SDK or Executable output type
+        for csproj in csproj_files:
+            try:
+                content = csproj.read_text(encoding="utf-8")
+                if "Microsoft.NET.Sdk.Web" in content or "<OutputType>Exe</OutputType>" in content:
+                    return f"dotnet {csproj.stem}.dll"
+            except OSError:
+                continue
+
+        # 3. Search for .csproj with Web, Api, UI, App, or Server in project stem
+        for csproj in csproj_files:
+            name_lower = csproj.stem.lower()
+            if any(token in name_lower for token in ("web", "api", "ui", "app", "server", "service")):
+                return f"dotnet {csproj.stem}.dll"
+
+        # 4. Fallback to the first project or target stem
+        return f"dotnet {csproj_files[0].stem}.dll"
+

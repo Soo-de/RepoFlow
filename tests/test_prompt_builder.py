@@ -58,3 +58,22 @@ def test_prompt_builder_correction():
     assert "Schema Error: 'jobs' is required" in prompt
     assert "YAML Syntax Error: unclosed block" in prompt
 
+
+def test_prompt_builder_dockerfile_csharp():
+    builder = PromptBuilder()
+    analysis = RepoAnalysis(
+        primary_language="csharp",
+        dependency_info=DependencyInfo(
+            manager="dotnet",
+            language="csharp",
+            install_command="dotnet restore App.sln",
+            manifest_file="App.sln",
+            additional_manifests=["WebApi/WebApi.csproj"],
+        ),
+    )
+    prompt = builder.build_dockerfile(analysis)
+    assert "Additional Manifest / Project Files: WebApi/WebApi.csproj" in prompt
+    assert "Copy all dependency manifest and project files" in prompt
+    assert "App.sln, WebApi/WebApi.csproj" in prompt
+
+
