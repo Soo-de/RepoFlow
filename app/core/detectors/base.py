@@ -8,6 +8,25 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class EnvironmentRequirement:
+    """A generic environment/compatibility requirement detected from project analysis.
+
+    Detectors emit these to express any runtime, build, or environment need
+    without coupling to a specific language, framework, or CI/CD platform.
+
+    Attributes:
+        kind:   Category of requirement (e.g. "env_var", "runtime_version_override", "build_flag").
+        key:    Identifier for the requirement (e.g. "NODE_OPTIONS", "JAVA_TOOL_OPTIONS").
+        value:  The value to set (e.g. "--openssl-legacy-provider").
+        reason: Human-readable explanation for logging and LLM context.
+    """
+    kind: str
+    key: str
+    value: str
+    reason: str = ""
+
+
+@dataclass
 class PlatformSetupInfo:
     """Platform-specific runtime setup action/task metadata for a language ecosystem."""
     task_or_action: str | None = None
@@ -32,6 +51,8 @@ class DependencyInfo:
     runner_entrypoint: str | None = None
     app_type: str = "runtime_service"
     publish_dir: str | None = None
+    environment_requirements: list[EnvironmentRequirement] = field(default_factory=list)
+    build_output_path: str | None = None
 
 
 @dataclass

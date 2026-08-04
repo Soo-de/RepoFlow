@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo, ServiceHint
+from app.core.detectors.base import BaseDetector, DependencyInfo, EnvironmentRequirement, PlatformSetupInfo, TestInfo, ServiceHint
 from app.core.platform_detect import Platform
 
 
@@ -61,24 +61,30 @@ class NodeDetector(BaseDetector):
     def resolve_dependency_info(
         self, directory: Path, matched_marker: str, base_info: DependencyInfo,
     ) -> DependencyInfo:
-        """Refine install command, lockfile, runner_image, and runner_entrypoint.
+        """Refine install command, lockfile, runner_image, runner_entrypoint,
+        environment requirements, and build output path.
 
         1. Lockfile Verification: Only assign lockfile if it actually exists in directory.
-        2. Application Categorization: Distinguish static web frontend (Vite, React, Vue, Svelte)
-           which requires NGINX serving, from Node.js backend runtime applications (Express, NestJS).
+        2. Application Categorization: Distinguish static web frontend from Node.js backend.
+        3. Compatibility Detection: Detect legacy OpenSSL requirement for old build tools on Node 17+.
+        4. Build Output Resolution: Resolve actual build artifact path (e.g. Angular's dist/<app>/browser).
         """
+        import json
+        import re
+
         install_cmd = base_info.install_command
         manifest = base_info.manifest_file or matched_marker
         lockfile = None
         runner_image = "node:20-slim"
         runner_entrypoint = "npm start"
+        environment_reqs: list[EnvironmentRequirement] = []
+        build_output_path: str | None = None
 
         pkg_json = directory / "package.json"
         is_static_frontend = False
 
         if pkg_json.exists():
             try:
-                import json
                 data = json.loads(pkg_json.read_text(encoding="utf-8"))
                 scripts = data.get("scripts", {})
                 deps = data.get("dependencies", {})
@@ -100,12 +106,22 @@ class NodeDetector(BaseDetector):
                     runner_entrypoint = "npm start"
                 elif main_file:
                     runner_entrypoint = f"node {main_file}"
+
+                # --- Compatibility detection: legacy OpenSSL for old build tools ---
+                environment_reqs.extend(
+                    self._detect_openssl_requirement(all_deps, directory)
+                )
+
+                # --- Build output resolution for Angular projects ---
+                if (directory / "angular.json").exists() or any(dep.startswith("@angular/") for dep in all_deps):
+                    build_output_path = self._resolve_angular_output_path(directory)
+
             except Exception:
                 pass
 
         if is_static_frontend:
             app_type = "static_frontend"
-            publish_dir = "dist"
+            publish_dir = build_output_path or "dist"
             runner_image = "nginx:alpine"
             runner_entrypoint = 'nginx -g "daemon off;"'
         else:
@@ -144,7 +160,148 @@ class NodeDetector(BaseDetector):
             runner_entrypoint=runner_entrypoint,
             app_type=app_type,
             publish_dir=publish_dir,
+            environment_requirements=environment_reqs,
+            build_output_path=build_output_path,
         )
+
+    def _detect_openssl_requirement(
+        self, all_deps: dict[str, str], directory: Path,
+    ) -> list[EnvironmentRequirement]:
+        """Detect whether old Webpack-based build tools need --openssl-legacy-provider.
+
+        Returns an EnvironmentRequirement when a legacy build tool version is found
+        and the resolved Node runtime is 17+. The requirement is expressed generically
+        so the pipeline renderer can place it appropriately for any CI/CD platform.
+        """
+        import re
+
+        legacy_tool_patterns = {
+            "webpack": 4,
+            "@angular/cli": 15,
+            "react-scripts": 4,
+        }
+
+        needs_legacy = False
+        for tool, max_legacy_major in legacy_tool_patterns.items():
+            version_spec = all_deps.get(tool)
+            if not version_spec:
+                continue
+            match = re.search(r"(\d+)", version_spec)
+            if match and int(match.group(1)) <= max_legacy_major:
+                needs_legacy = True
+                break
+
+        if not needs_legacy:
+            return []
+
+        # Check whether the resolved runtime is Node 17+
+        node_version = self.detect_runtime_version(directory)
+        if node_version is None:
+            node_version = self.default_runtime_version
+
+        try:
+            major = int(node_version.split(".")[0])
+        except (ValueError, AttributeError):
+            return []
+
+        if major < 17:
+            return []
+
+        return [
+            EnvironmentRequirement(
+                kind="env_var",
+                key="NODE_OPTIONS",
+                value="--openssl-legacy-provider",
+                reason=(
+                    "Legacy build tool requires OpenSSL legacy provider on Node.js 17+ "
+                    "to avoid ERR_OSSL_EVP_UNSUPPORTED"
+                ),
+            ),
+        ]
+
+    def _resolve_angular_output_path(self, directory: Path) -> str | None:
+        """Parse angular.json to determine the actual build output path.
+
+        Angular CLI writes build artifacts to a path defined in angular.json's
+        architect.build.options.outputPath. The structure depends on the builder:
+
+        - ``@angular-devkit/build-angular:application`` or ``@angular/build:application`` (Angular 17+)
+          outputs to ``<outputPath>/browser/``.
+        - ``@angular-devkit/build-angular:browser`` (legacy)
+          outputs directly to ``<outputPath>/``.
+
+        An object-typed outputPath (``{"base": "..."}``) is also an Angular 17+ signal
+        that implies the ``browser/`` subdirectory.
+        """
+        import json
+
+        angular_json = directory / "angular.json"
+        if not angular_json.exists():
+            candidates = list(directory.rglob("angular.json"))
+            if candidates:
+                angular_json = candidates[0]
+            else:
+                return None
+
+        try:
+            config = json.loads(angular_json.read_text(encoding="utf-8"))
+            projects = config.get("projects", {})
+            default_project = config.get("defaultProject")
+
+            target_project = None
+            project_name = None
+
+            # 1. Try defaultProject if specified
+            if default_project and default_project in projects and isinstance(projects[default_project], dict):
+                target_project = projects[default_project]
+                project_name = default_project
+
+            # 2. Otherwise find the first project with projectType == "application" or a build architect target
+            if not target_project:
+                for p_name, p_val in projects.items():
+                    if isinstance(p_val, dict):
+                        p_type = p_val.get("projectType")
+                        architect = p_val.get("architect", {})
+                        if p_type == "application" or "build" in architect:
+                            target_project = p_val
+                            project_name = p_name
+                            break
+
+            # 3. Fallback: pick any project dict if available
+            if not target_project:
+                for p_name, p_val in projects.items():
+                    if isinstance(p_val, dict):
+                        target_project = p_val
+                        project_name = p_name
+                        break
+
+            if not target_project or not isinstance(target_project, dict):
+                return None
+
+            build_config = target_project.get("architect", {}).get("build", {})
+            builder = build_config.get("builder", "")
+            output_path = build_config.get("options", {}).get("outputPath")
+
+            if output_path is None:
+                base_path = f"dist/{project_name}" if project_name else "dist"
+            elif isinstance(output_path, dict):
+                base_path = output_path.get("base", f"dist/{project_name}")
+            else:
+                base_path = str(output_path)
+
+            uses_application_builder = (
+                isinstance(output_path, dict)
+                or "application" in builder
+                or "app-shell" in builder
+            )
+
+            if uses_application_builder:
+                return f"{base_path}/browser"
+
+            return base_path
+
+        except Exception:
+            return None
 
     @property
     def test_configs(self) -> dict[str, TestInfo]:
