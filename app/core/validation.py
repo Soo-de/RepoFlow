@@ -342,6 +342,19 @@ class PipelineValidator:
                 logger.exception("Failed running rule-based validation")
                 errors.append(f"Validation System Error (Rules Engine): {err}")
 
+        if errors:
+            self._log_validation_errors(platform, errors)
+
         return len(errors) == 0, errors
 
+    @staticmethod
+    def _log_validation_errors(platform: Platform, errors: list[str]) -> None:
+        """Log detailed validation error breakdown for server-side debugging."""
+        lines = [
+            f"Validation failed for platform '{platform.value}' "
+            f"with {len(errors)} error(s):"
+        ]
+        for i, err in enumerate(errors, 1):
+            lines.append(f"  [{i}] {err}")
+        logger.warning("\n".join(lines))
 

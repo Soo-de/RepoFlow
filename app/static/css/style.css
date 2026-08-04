@@ -832,6 +832,47 @@ footer {
 }
 
 
+/* ───── Validation Warning ───── */
+
+.validation-warning {
+    background: rgba(252, 189, 0, 0.06);
+    border-bottom: 1px solid rgba(252, 189, 0, 0.25);
+    padding: 1rem 1.5rem;
+}
+
+.validation-warning-header {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--warning);
+    margin-bottom: 0.4rem;
+}
+
+.validation-warning-text {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.6rem;
+}
+
+.validation-warning-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.validation-warning-list li {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.3rem 0.6rem;
+    background: rgba(252, 189, 0, 0.04);
+    border-left: 2px solid var(--warning);
+    border-radius: 0 4px 4px 0;
+}
+
+
 /* ───── Responsive ───── */
 
 @media (max-width: 640px) {

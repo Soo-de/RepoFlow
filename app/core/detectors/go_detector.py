@@ -11,6 +11,10 @@ class GoDetector(BaseDetector):
         return "go"
 
     @property
+    def default_runtime_version(self) -> str:
+        return "1.22"
+
+    @property
     def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
         return {
             Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-go@v5", "go-version"),

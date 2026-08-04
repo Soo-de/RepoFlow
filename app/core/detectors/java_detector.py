@@ -11,10 +11,18 @@ class JavaDetector(BaseDetector):
         return "java"
 
     @property
+    def default_runtime_version(self) -> str:
+        return "17"
+
+    @property
     def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
         return {
-            Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-java@v4", "java-version"),
-            Platform.AZURE_PIPELINES: PlatformSetupInfo("JavaToolInstaller@0", "versionSpec"),
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo(
+                "actions/setup-java@v4", "java-version", extra_inputs={"distribution": "temurin"}
+            ),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo(
+                "JavaToolInstaller@0", "versionSpec", extra_inputs={"jdkArchitectureOption": "x64", "jdkSourceOption": "PreInstalled"}
+            ),
         }
 
     @property

@@ -11,10 +11,14 @@ class PythonDetector(BaseDetector):
         return "python"
 
     @property
+    def default_runtime_version(self) -> str:
+        return "3.12"
+
+    @property
     def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
         return {
             Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-python@v5", "python-version"),
-            Platform.AZURE_PIPELINES: PlatformSetupInfo("UsePythonVersion@0", "versionSpec"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("UsePythonVersion@0", "versionSpec", extra_inputs={"architecture": "x64"}),
         }
 
     @property

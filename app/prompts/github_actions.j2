@@ -58,7 +58,7 @@ Use a SINGLE "ci" job containing applicable setup, cache, and install steps list
 
 STEP DETAILS (in order within each job):
 a. Checkout using `actions/checkout@v4`.
-{% if setup and setup.task_or_action %}b. Set up the {{ analysis.primary_language }} runtime using `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with `with: {{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Enable dependency caching in the setup action for `{{ analysis.manifest_file if analysis.manifest_file else analysis.dependency_manager }}`.{% endif %}
+{% if setup and setup.task_or_action %}b. Set up the {{ analysis.primary_language }} runtime using `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with `with: {{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}{% if setup.extra_inputs %}{% for k, v in setup.extra_inputs.items() %}, `{{ k }}: '{{ v }}'`{% endfor %}{% endif %}. Enable dependency caching in the setup action for `{{ analysis.manifest_file if analysis.manifest_file else analysis.dependency_manager }}`.{% endif %}
 {% if analysis.install_command %}c. Install dependencies: `{{ analysis.install_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
 {% if analysis.build_command %}d. Build: `{{ analysis.build_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
 {% if analysis.test_command %}e. Run tests: `{{ analysis.test_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}.

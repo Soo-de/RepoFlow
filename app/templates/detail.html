@@ -73,6 +73,13 @@
                 <a href="/jobs/{{ job_id }}/download/dockerfile" class="btn-download">Download Dockerfile</a>
             </div>
         </div>
+        <div class="validation-warning" id="validation-warning" style="display: none;">
+            <div class="validation-warning-header">
+                <span>⚠ Validation Issues</span>
+            </div>
+            <p class="validation-warning-text">The generated YAML has validation issues and may need manual fixes.</p>
+            <ul class="validation-warning-list" id="validation-warning-list"></ul>
+        </div>
         <div class="result-tab-content" id="tab-content-yaml">
             <pre><code id="yaml-output"></code></pre>
         </div>
@@ -95,6 +102,8 @@
     "yaml": {{ (job.result.get("yaml") or "" if job.result else "")|tojson }},
     "dockerfile": {{ (job.result.get("dockerfile") or "" if job.result else "")|tojson }},
     "dockerfile_generated": {{ (job.result.get("dockerfile_generated", False) if job.result else False)|tojson }},
+    "validation_passed": {{ (job.result.get("validation_passed", true) if job.result else true)|tojson }},
+    "validation_errors": {{ (job.result.get("validation_errors", []) if job.result else [])|tojson }},
     "error": {{ (job.error or "")|tojson }},
     "failed_stage": {{ (job.failed_stage or "")|tojson }}
 }
@@ -124,6 +133,8 @@ function copyContent(elementId, btn) {
     const dockerfileOutput = document.getElementById("dockerfile-output");
     const dockerfileBadge = document.getElementById("dockerfile-badge");
     const errorMessage = document.getElementById("error-message");
+    const validationWarning = document.getElementById("validation-warning");
+    const validationWarningList = document.getElementById("validation-warning-list");
 
     // --- Tab switching ---
     document.querySelectorAll(".result-tab").forEach(function(tab) {
@@ -215,6 +226,17 @@ function copyContent(elementId, btn) {
         if (dockerfileBadge) {
             dockerfileBadge.textContent = data.dockerfile_generated ? "(LLM)" : "(Repo)";
         }
+
+        if (data.validation_passed === false && data.validation_errors && data.validation_errors.length > 0) {
+            validationWarningList.innerHTML = "";
+            data.validation_errors.forEach(function(err) {
+                var li = document.createElement("li");
+                li.textContent = err;
+                validationWarningList.appendChild(li);
+            });
+            validationWarning.style.display = "block";
+        }
+
         resultPanel.style.display = "block";
     }
 
