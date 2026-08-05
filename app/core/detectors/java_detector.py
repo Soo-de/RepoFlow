@@ -80,6 +80,7 @@ class JavaDetector(BaseDetector):
             runner_entrypoint="java -jar app.jar",
             app_type="runtime_service",
             publish_dir="target",
+            cache_key_files=[lockfile] if lockfile else [base_info.manifest_file or matched_marker],
         )
 
     @property

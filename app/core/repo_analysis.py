@@ -79,6 +79,22 @@ class RepoAnalysis:
         return self.dependency_info.cache_env_var if self.dependency_info else None
 
     @property
+    def cache_key_files(self) -> list[str]:
+        """Files whose content changes when dependency versions change.
+
+        Detectors provide explicit cache_key_files for ecosystems where the
+        primary manifest doesn't pin dependency versions (e.g. .NET's .slnx).
+        Falls back to lockfile or manifest_file for backward compatibility.
+        """
+        if self.dependency_info and self.dependency_info.cache_key_files:
+            return self.dependency_info.cache_key_files
+        if self.lockfile:
+            return [self.lockfile]
+        if self.manifest_file:
+            return [self.manifest_file]
+        return []
+
+    @property
     def install_command(self) -> str:
         return self.dependency_info.install_command if self.dependency_info else ""
 
@@ -190,6 +206,11 @@ def _format_dependency_info(repo_dir: Path, search_dir: Path, dep_info: Dependen
         for am in dep_info.additional_manifests
     ]
 
+    cache_key_files = [
+        f"{working_dir}/{ckf}" if (working_dir and not ("/" in ckf)) else ckf
+        for ckf in dep_info.cache_key_files
+    ]
+
     return DependencyInfo(
         manager=dep_info.manager,
         language=dep_info.language,
@@ -208,6 +229,7 @@ def _format_dependency_info(repo_dir: Path, search_dir: Path, dep_info: Dependen
         environment_requirements=dep_info.environment_requirements,
         build_output_path=dep_info.build_output_path,
         additional_manifests=additional_manifests,
+        cache_key_files=cache_key_files,
     )
 
 

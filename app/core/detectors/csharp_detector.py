@@ -139,6 +139,19 @@ class CSharpDetector(BaseDetector):
                 except ValueError:
                     additional_manifests.append(csproj.name)
 
+        # .csproj/.fsproj files contain <PackageReference> with version pins;
+        # .sln/.slnx only list project paths and must not be used for cache keys
+        cache_key_files = [
+            csproj.relative_to(directory).as_posix() for csproj in csproj_files
+        ]
+        fsproj_files = sorted(
+            [f for f in directory.rglob("*.fsproj") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
+            key=lambda f: len(f.relative_to(directory).parts)
+        )
+        cache_key_files.extend(
+            f.relative_to(directory).as_posix() for f in fsproj_files
+        )
+
         return DependencyInfo(
             manager="dotnet",
             language="csharp",
@@ -155,6 +168,7 @@ class CSharpDetector(BaseDetector):
             app_type="runtime_service",
             publish_dir="/app/publish",
             additional_manifests=additional_manifests,
+            cache_key_files=cache_key_files,
         )
 
     def resolve_dependency_info(

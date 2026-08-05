@@ -162,6 +162,7 @@ class NodeDetector(BaseDetector):
             publish_dir=publish_dir,
             environment_requirements=environment_reqs,
             build_output_path=build_output_path,
+            cache_key_files=[lockfile] if lockfile else [manifest],
         )
 
     def _detect_openssl_requirement(

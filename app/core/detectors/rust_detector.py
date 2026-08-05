@@ -62,6 +62,7 @@ class RustDetector(BaseDetector):
             runner_entrypoint=runner_entrypoint,
             app_type=app_type,
             publish_dir=publish_dir,
+            cache_key_files=[lockfile] if lockfile else ["Cargo.toml"],
         )
 
     @property

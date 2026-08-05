@@ -54,6 +54,7 @@ class DependencyInfo:
     environment_requirements: list[EnvironmentRequirement] = field(default_factory=list)
     build_output_path: str | None = None
     additional_manifests: list[str] = field(default_factory=list)
+    cache_key_files: list[str] = field(default_factory=list)
 
 
 
