@@ -391,10 +391,51 @@ class NodeDetector(BaseDetector):
             except Exception:
                 pass
 
-        # 3. Check for postcss subpath exports incompatibility requiring Node ≤16
+        # 3. Generic check: infer compatible Node era from package-lock.json engines / lockfileVersion
+        lockfile_compat = self._detect_lockfile_compat_version(repo_dir)
+        if lockfile_compat:
+            return lockfile_compat
+
+        # 4. Fallback check: postcss subpath exports incompatibility requiring Node ≤16
         compat_version = self._detect_postcss_compat_version(repo_dir)
         if compat_version:
             return compat_version
+
+        return None
+
+    def _detect_lockfile_compat_version(self, repo_dir: Path) -> str | None:
+        """Inspect package-lock.json for root engines constraints or lockfileVersion signals.
+
+        - lockfileVersion 1 (npm 5-6 / Node 8-14 era): safe Node pick "14"
+        - lockfileVersion 2 (npm 7-8 / Node 14-16 era): safe Node pick "16"
+        - lockfileVersion 3+ (npm 9+ / Node 18+ era): default modern Node (handled downstream)
+        """
+        import json
+        import re
+
+        lock_file = repo_dir / "package-lock.json"
+        if not lock_file.exists():
+            return None
+
+        try:
+            data = json.loads(lock_file.read_text(encoding="utf-8"))
+
+            # Check root package engines in lockfile (v2+ format: packages[""].engines.node)
+            root_engines = data.get("packages", {}).get("", {}).get("engines", {}).get("node")
+            if root_engines:
+                match = re.search(r"(\d+(?:\.\d+)*)", root_engines)
+                if match:
+                    return match.group(1)
+
+            # Infer Node era from lockfileVersion format
+            lock_version = data.get("lockfileVersion")
+            if lock_version == 1:
+                return "14"
+            if lock_version == 2:
+                return "16"
+
+        except Exception:
+            pass
 
         return None
 
