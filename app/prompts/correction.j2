@@ -26,3 +26,12 @@ CRITICAL RULES:
 1. Output ONLY the corrected, pure, valid YAML content.
 2. Do NOT include markdown code block formatting (such as ```yaml or ```), explanations, or surrounding text.
 3. Fix all validation errors while maintaining the original functionality and configuration steps.
+{% if analysis and analysis.cache_key_files %}
+4. Cache key MUST be built from files that change when dependency versions change:
+   {{ analysis.cache_key_files | join(', ') }}
+   NEVER use a project-list or workspace file (e.g. .sln, .slnx) as a cache key source.
+{% endif %}
+{% if analysis and analysis.build_command and analysis.test_command %}
+5. If Build and Test are separate jobs, the Build job MUST publish artifacts and the Test job
+   MUST download them before running tests. Jobs do NOT share a filesystem.
+{% endif %}

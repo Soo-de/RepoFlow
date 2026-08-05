@@ -162,6 +162,7 @@ class NodeDetector(BaseDetector):
             publish_dir=publish_dir,
             environment_requirements=environment_reqs,
             build_output_path=build_output_path,
+            cache_key_files=[lockfile] if lockfile else [manifest],
         )
 
     def _detect_openssl_requirement(
@@ -390,5 +391,96 @@ class NodeDetector(BaseDetector):
             except Exception:
                 pass
 
-        # 3. If no pinned version found in files/package.json, return None (handled by default_runtime_version)
+        # 3. Generic check: infer compatible Node era from package-lock.json engines / lockfileVersion
+        lockfile_compat = self._detect_lockfile_compat_version(repo_dir)
+        if lockfile_compat:
+            return lockfile_compat
+
+        # 4. Fallback check: postcss subpath exports incompatibility requiring Node ≤16
+        compat_version = self._detect_postcss_compat_version(repo_dir)
+        if compat_version:
+            return compat_version
+
+        return None
+
+    def _detect_lockfile_compat_version(self, repo_dir: Path) -> str | None:
+        """Inspect package-lock.json for root engines constraints or lockfileVersion signals.
+
+        - lockfileVersion 1 (npm 5-6 / Node 8-14 era): safe Node pick "14"
+        - lockfileVersion 2 (npm 7-8 / Node 14-16 era): safe Node pick "16"
+        - lockfileVersion 3+ (npm 9+ / Node 18+ era): default modern Node (handled downstream)
+        """
+        import json
+        import re
+
+        lock_file = repo_dir / "package-lock.json"
+        if not lock_file.exists():
+            return None
+
+        try:
+            data = json.loads(lock_file.read_text(encoding="utf-8"))
+
+            # Check root package engines in lockfile (v2+ format: packages[""].engines.node)
+            root_engines = data.get("packages", {}).get("", {}).get("engines", {}).get("node")
+            if root_engines:
+                match = re.search(r"(\d+(?:\.\d+)*)", root_engines)
+                if match:
+                    return match.group(1)
+
+            # Infer Node era from lockfileVersion format
+            lock_version = data.get("lockfileVersion")
+            if lock_version == 1:
+                return "14"
+            if lock_version == 2:
+                return "16"
+
+        except Exception:
+            pass
+
+        return None
+
+    def _detect_postcss_compat_version(self, repo_dir: Path) -> str | None:
+        """Detect old build tools that need Node ≤16 due to postcss subpath exports.
+
+        Node 17+ enforces strict "exports" in package.json. Old versions of
+        css-loader, postcss-loader, and Angular CLI internally call
+        require('postcss/package.json') which is not exposed in postcss v8+'s
+        exports map, causing ERR_PACKAGE_PATH_NOT_EXPORTED at build time.
+
+        Returning "16" here caps the Node version before the default (20) kicks in,
+        which also avoids the OpenSSL 3.0 issue on these same old projects.
+        """
+        import json
+        import re
+
+        pkg_json = repo_dir / "package.json"
+        if not pkg_json.exists():
+            return None
+
+        try:
+            data = json.loads(pkg_json.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+        deps = data.get("dependencies", {})
+        dev_deps = data.get("devDependencies", {})
+        all_deps = {**deps, **dev_deps}
+
+        # Packages and their max major versions that trigger the incompatibility
+        compat_thresholds = {
+            "@angular/cli": 12,
+            "@angular/core": 12,
+            "postcss-loader": 4,
+            "css-loader": 5,
+            "@vue/cli-service": 4,
+        }
+
+        for pkg, max_compat_major in compat_thresholds.items():
+            version_spec = all_deps.get(pkg)
+            if not version_spec:
+                continue
+            match = re.search(r"(\d+)", version_spec)
+            if match and int(match.group(1)) <= max_compat_major:
+                return "16"
+
         return None

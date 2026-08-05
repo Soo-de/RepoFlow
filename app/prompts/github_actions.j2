@@ -47,7 +47,15 @@ JOB ORGANIZATION:
 {% if analysis.build_command and analysis.test_command %}
 Use TWO jobs:
   1. A "build" job containing applicable setup, cache, install, and build steps listed below.
+     At the END of the build job, upload build artifacts using `actions/upload-artifact@v4`
+     (name: 'build-output', path pointing to the build output directory).
   2. A "test" job (needs: build) containing applicable setup, cache, install, test, and upload steps listed below.
+     At the START of the test job (after setup/cache/install), download the build artifact using
+     `actions/download-artifact@v4` (name: 'build-output') BEFORE running any test command.
+     Only use `--no-build` or equivalent skip-build flags when this download step is present.
+  IMPORTANT: Jobs in GitHub Actions do NOT share a filesystem. The build job MUST upload its
+  output and the test job MUST download it. Without these steps, `--no-build` test flags will
+  fail because the compiled artifacts do not exist on the test job's runner.
 {% elif analysis.build_command %}
 Use a SINGLE "build" job containing applicable setup, cache, install, and build steps listed below. Do NOT include test steps.
 {% elif analysis.test_command %}
@@ -66,7 +74,7 @@ Every job MUST include the following environment variables under `env:` at the j
 
 STEP DETAILS (in order within each job):
 a. Checkout using `actions/checkout@v4`.
-{% if setup and setup.task_or_action %}b. Set up the {{ analysis.primary_language }} runtime using `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with `with: {{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}{% if setup.extra_inputs %}{% for k, v in setup.extra_inputs.items() %}, `{{ k }}: '{{ v }}'`{% endfor %}{% endif %}. Enable dependency caching in the setup action for `{{ analysis.manifest_file if analysis.manifest_file else analysis.dependency_manager }}`.{% endif %}
+{% if setup and setup.task_or_action %}b. Set up the {{ analysis.primary_language }} runtime using `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with `with: {{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}{% if setup.extra_inputs %}{% for k, v in setup.extra_inputs.items() %}, `{{ k }}: '{{ v }}'`{% endfor %}{% endif %}.{% if analysis.cache_key_files %} Enable dependency caching in the setup action. The cache key MUST use files that change when dependency versions change: {{ analysis.cache_key_files | join(', ') }}. NEVER use a project-list or workspace file (e.g. .sln, .slnx) as a cache key source.{% endif %}{% endif %}
 {% if analysis.install_command %}c. Install dependencies: `{{ analysis.install_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
 {% if analysis.build_command %}d. Build: `{{ analysis.build_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
 {% if analysis.test_command %}e. Run tests: `{{ analysis.test_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}.

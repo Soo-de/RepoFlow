@@ -75,6 +75,7 @@ def log_analysis_summary(
         f"   • Publish Directory      : {_format_val(analysis.publish_dir)}",
         f"   • Cache Path             : {_format_val(analysis.cache_path)}",
         f"   • Cache Env Var          : {_format_val(analysis.cache_env_var)}",
+        f"   • Cache Key Files        : {_format_val(analysis.cache_key_files)}",
         "",
         " [3] ENVIRONMENT REQUIREMENTS",
         f"   • Runtime Version        : {_format_val(analysis.runtime_version)}",

@@ -79,7 +79,17 @@ JOB ORGANIZATION:
 {% if analysis.build_command and analysis.test_command %}
 Use TWO jobs inside the CI stage:
   1. A "Build" job containing the applicable setup, cache, install, and build steps listed below.
+     At the END of the Build job, publish the build output as a pipeline artifact using
+     `PublishBuildArtifacts@1` (publishLocation: 'Container', pathToPublish pointing to the
+     build output directory, artifactName: 'drop').
   2. A "Test" job (dependsOn: Build) containing the applicable setup, cache, install, test, and publish steps listed below.
+     At the START of the Test job (after setup/cache/install), download the build artifact using
+     `DownloadBuildArtifacts@1` (artifactName: 'drop', downloadPath: '$(System.ArtifactsDirectory)')
+     BEFORE running any test command. Only use `--no-build` or equivalent skip-build flags when
+     this download step is present in the same job.
+  IMPORTANT: Jobs in Azure Pipelines do NOT share a filesystem. The Build job MUST publish its
+  output and the Test job MUST download it. Without these steps, `--no-build` test flags will
+  fail because the compiled artifacts do not exist on the Test job's agent.
 {% elif analysis.build_command %}
 Use a SINGLE job named "Build" containing the applicable setup, cache, install, and build steps listed below. Do NOT include any test steps.
 {% elif analysis.test_command %}
@@ -92,11 +102,15 @@ STEP SYNTAX & RULES (in order within each job):
 {% if setup and setup.task_or_action %}
 a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with inputs `{{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}{% if setup.extra_inputs %}{% for k, v in setup.extra_inputs.items() %}, `{{ k }}: '{{ v }}'`{% endfor %}{% endif %}. Do NOT use echo commands for runtime setup.
 {% endif %}
-{% if analysis.manifest_file and analysis.cache_path %}
+{% if analysis.cache_key_files and analysis.cache_path %}
 b. Cache dependencies using `Cache@2` BEFORE the install step.
    IMPORTANT for `Cache@2`:
    - Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
    - Every job containing `Cache@2` MUST declare the cache variable under `variables:` at the job level (e.g. `{{ analysis.cache_env_var }}: {{ analysis.cache_path }}`) so the package manager populates the cached path during installation.
+   - The cache key MUST be built from files that change whenever a dependency version changes:
+     {{ analysis.cache_key_files | join(', ') }}
+   - NEVER use a project-list or workspace file (e.g. .sln, .slnx) as a cache key source.
+     Those files only list project paths and do not change when dependency versions are updated.
 {% endif %}
 {% if analysis.environment_requirements %}
    IMPORTANT: Every job MUST include the following environment variables under `variables:` at the job level:
@@ -104,12 +118,12 @@ b. Cache dependencies using `Cache@2` BEFORE the install step.
    - `{{ req.key }}: '{{ req.value }}'` ({{ req.reason }})
 {% endfor %}
 {% endif %}
-{% if analysis.manifest_file and analysis.cache_path %}
+{% if analysis.cache_key_files and analysis.cache_path %}
    Example:
    - task: Cache@2
      displayName: 'Cache dependencies'
      inputs:
-       key: '{{ analysis.primary_language }} | "$(Agent.OS)" | "$(Build.SourcesDirectory)/{{ analysis.lockfile if analysis.lockfile else analysis.manifest_file }}"'
+       key: '{{ analysis.primary_language }} | "$(Agent.OS)" | {% for ckf in analysis.cache_key_files %}"$(Build.SourcesDirectory)/{{ ckf }}"{% if not loop.last %} | {% endif %}{% endfor %}'
        path: {{ analysis.cache_path }}
 {% endif %}
 {% if analysis.install_command %}

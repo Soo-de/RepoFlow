@@ -172,6 +172,25 @@ def test_analyze_nested_node_project(tmp_path):
     assert analysis.lockfile == "cinelog/package-lock.json"
 
 
+def test_analyze_node_lockfile_version_signals(tmp_path):
+    # Lockfile v1 -> Node 14
+    (tmp_path / "package.json").write_text('{"name": "legacy-app"}', encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"name": "legacy-app", "lockfileVersion": 1}', encoding="utf-8")
+    analysis = analyze(tmp_path)
+    assert analysis.runtime_version == "14"
+
+    # Lockfile v2 -> Node 16
+    (tmp_path / "package-lock.json").write_text('{"name": "legacy-app", "lockfileVersion": 2}', encoding="utf-8")
+    analysis_v2 = analyze(tmp_path)
+    assert analysis_v2.runtime_version == "16"
+
+    # Lockfile v3 -> default 20
+    (tmp_path / "package-lock.json").write_text('{"name": "legacy-app", "lockfileVersion": 3}', encoding="utf-8")
+    analysis_v3 = analyze(tmp_path)
+    assert analysis_v3.runtime_version == "20"
+
+
+
 
 
 
