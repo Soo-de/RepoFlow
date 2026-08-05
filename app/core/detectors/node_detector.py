@@ -391,5 +391,55 @@ class NodeDetector(BaseDetector):
             except Exception:
                 pass
 
-        # 3. If no pinned version found in files/package.json, return None (handled by default_runtime_version)
+        # 3. Check for postcss subpath exports incompatibility requiring Node ≤16
+        compat_version = self._detect_postcss_compat_version(repo_dir)
+        if compat_version:
+            return compat_version
+
+        return None
+
+    def _detect_postcss_compat_version(self, repo_dir: Path) -> str | None:
+        """Detect old build tools that need Node ≤16 due to postcss subpath exports.
+
+        Node 17+ enforces strict "exports" in package.json. Old versions of
+        css-loader, postcss-loader, and Angular CLI internally call
+        require('postcss/package.json') which is not exposed in postcss v8+'s
+        exports map, causing ERR_PACKAGE_PATH_NOT_EXPORTED at build time.
+
+        Returning "16" here caps the Node version before the default (20) kicks in,
+        which also avoids the OpenSSL 3.0 issue on these same old projects.
+        """
+        import json
+        import re
+
+        pkg_json = repo_dir / "package.json"
+        if not pkg_json.exists():
+            return None
+
+        try:
+            data = json.loads(pkg_json.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+        deps = data.get("dependencies", {})
+        dev_deps = data.get("devDependencies", {})
+        all_deps = {**deps, **dev_deps}
+
+        # Packages and their max major versions that trigger the incompatibility
+        compat_thresholds = {
+            "@angular/cli": 12,
+            "@angular/core": 12,
+            "postcss-loader": 4,
+            "css-loader": 5,
+            "@vue/cli-service": 4,
+        }
+
+        for pkg, max_compat_major in compat_thresholds.items():
+            version_spec = all_deps.get(pkg)
+            if not version_spec:
+                continue
+            match = re.search(r"(\d+)", version_spec)
+            if match and int(match.group(1)) <= max_compat_major:
+                return "16"
+
         return None
