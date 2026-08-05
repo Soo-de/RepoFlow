@@ -39,6 +39,16 @@
         },
         "forbidden_property": "paths",
         "message": "Task 'Cache@2' uses input parameter 'path:' (string), NOT 'paths:' (sequence/list)."
+      },
+      {
+        "type": "allowed_values",
+        "match": {
+          "key": "task",
+          "starts_with": "publishbuildartifact@"
+        },
+        "target_path": ["task"],
+        "values": ["PublishBuildArtifacts@1"],
+        "message": "Task name 'PublishBuildArtifact@1' is invalid in Azure DevOps. Use official plural task name 'PublishBuildArtifacts@1'."
       }
     ]
   }

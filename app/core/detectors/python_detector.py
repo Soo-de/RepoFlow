@@ -181,7 +181,7 @@ class PythonDetector(BaseDetector):
         return ["pyproject.toml"]
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
-        # Check dedicated config files first
+        # Check dedicated config files first (tox.ini, etc.)
         result = super().detect_test_framework(directory)
         if result:
             return result
@@ -192,21 +192,27 @@ class PythonDetector(BaseDetector):
         if (directory / "test").is_dir():
             return TestInfo(framework="pytest", command="python -m pytest test")
 
-        # Fall back to parsing pyproject.toml for pytest references
-        pyproject = directory / "pyproject.toml"
-        if pyproject.exists():
-            try:
-                content = pyproject.read_text(encoding="utf-8")
-                if "pytest" in content or "unittest" in content:
-                    return TestInfo(framework="pytest", command="python -m pytest")
-            except OSError:
-                pass
-
         # Check for test_*.py or *_test.py files
+        has_test_files = False
         for pattern in ("test_*.py", "*_test.py"):
             for match in directory.rglob(pattern):
-                if not any(skip in match.parts for skip in ("SKIP_DIRS", ".git", "node_modules", ".venv", "venv")):
-                    return TestInfo(framework="pytest", command="python -m pytest")
+                if not any(skip in match.parts for skip in (".git", "node_modules", ".venv", "venv")):
+                    has_test_files = True
+                    break
+        if has_test_files:
+            return TestInfo(framework="pytest", command="python -m pytest")
+
+        # Check manifest files (requirements.txt, pyproject.toml, Pipfile) for test framework dependencies
+        manifest_files = ["requirements.txt", "pyproject.toml", "Pipfile", "setup.py"]
+        for manifest in manifest_files:
+            p = directory / manifest
+            if p.exists():
+                try:
+                    content = p.read_text(encoding="utf-8").lower()
+                    if "pytest" in content or "unittest" in content or "tox" in content:
+                        return TestInfo(framework="pytest", command="python -m pytest")
+                except OSError:
+                    pass
 
         return None
 

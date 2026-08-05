@@ -92,12 +92,16 @@ class JavaDetector(BaseDetector):
         return ["pom.xml", "build.gradle"]
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
-        if (directory / "pom.xml").exists():
-            return TestInfo(framework="junit", command="mvn test")
+        """Java test detection. Only return test info if src/test or test files exist."""
+        test_dirs = [d for d in directory.rglob("src/test") if d.is_dir()]
+        test_files = [f for f in directory.rglob("*Test*.java") if not any(skip in f.parts for skip in (".git", "target", "build"))]
+        
+        if not (test_dirs or test_files):
+            return None
+
         if (directory / "build.gradle").exists() or (directory / "build.gradle.kts").exists():
             return TestInfo(framework="junit", command="gradle test")
-        
-        test_dirs = [d for d in directory.rglob("src/test") if d.is_dir()]
-        if test_dirs:
+        if (directory / "pom.xml").exists():
             return TestInfo(framework="junit", command="mvn test")
-        return None
+
+        return TestInfo(framework="junit", command="mvn test")

@@ -166,7 +166,7 @@ class CSharpDetector(BaseDetector):
             runner_image="mcr.microsoft.com/dotnet/aspnet:10.0",
             runner_entrypoint=entrypoint,
             app_type="runtime_service",
-            publish_dir="/app/publish",
+            publish_dir=None,
             additional_manifests=additional_manifests,
             cache_key_files=cache_key_files,
         )
@@ -183,11 +183,6 @@ class CSharpDetector(BaseDetector):
         test_dirs = [d for d in directory.rglob("*") if d.is_dir() and d.name.lower() in ("test", "tests", "specs")]
 
         if test_projects or test_dirs:
-            return TestInfo(framework="dotnet_test", command="dotnet test --no-build --logger trx")
-
-        # If any .csproj exists, default to dotnet test
-        all_projects = [f for f in directory.rglob("*.csproj") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))]
-        if all_projects:
             return TestInfo(framework="dotnet_test", command="dotnet test --no-build --logger trx")
 
         return None

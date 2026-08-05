@@ -91,9 +91,12 @@ class GoDetector(BaseDetector):
     def monorepo_markers(self) -> list[str]:
         return ["go.mod"]
 
-    def default_test_info(self) -> TestInfo:
-        """Go has a built-in test runner with no config file dependency."""
-        return TestInfo(framework="go_test", command="go test ./...")
+    def detect_test_framework(self, directory: Path) -> TestInfo | None:
+        """Go has a built-in test runner. Only return test info if *_test.go files exist."""
+        test_files = list(directory.rglob("*_test.go"))
+        if test_files:
+            return TestInfo(framework="go_test", command="go test ./...")
+        return None
 
     def detect_runtime_version(self, repo_dir: Path) -> str | None:
         # Check .go-version first

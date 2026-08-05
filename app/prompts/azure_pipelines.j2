@@ -23,6 +23,9 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 {% if analysis.build_command %}
 - Build Command: {{ analysis.build_command }}
 {% endif %}
+{% if analysis.publish_dir %}
+- Build Output Directory: {{ analysis.publish_dir }}
+{% endif %}
 {% if analysis.test_framework %}
 - Test Framework: {{ analysis.test_framework }}
 {% endif %}
@@ -33,6 +36,12 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 {% endif %}
 {% if analysis.services_needed %}
 - Required Services: {{ analysis.services_needed | join(', ') }}
+{% endif %}
+{% if analysis.environment_requirements %}
+- Environment Requirements:
+{% for req in analysis.environment_requirements %}
+  * {{ req.key }} = '{{ req.value }}' ({{ req.reason }})
+{% endfor %}
 {% endif %}
 
 OUTPUT RULES:
@@ -79,17 +88,18 @@ JOB ORGANIZATION:
 {% if analysis.build_command and analysis.test_command %}
 Use TWO jobs inside the CI stage:
   1. A "Build" job containing the applicable setup, cache, install, and build steps listed below.
+{% if analysis.publish_dir %}
      At the END of the Build job, publish the build output as a pipeline artifact using
-     `PublishBuildArtifacts@1` (publishLocation: 'Container', pathToPublish pointing to the
-     build output directory, artifactName: 'drop').
+     `PublishBuildArtifacts@1` (publishLocation: 'Container', PathtoPublish: '$(Build.SourcesDirectory)/{{ analysis.publish_dir }}', artifactName: 'drop').
+{% endif %}
   2. A "Test" job (dependsOn: Build) containing the applicable setup, cache, install, test, and publish steps listed below.
+{% if analysis.publish_dir %}
      At the START of the Test job (after setup/cache/install), download the build artifact using
      `DownloadBuildArtifacts@1` (artifactName: 'drop', downloadPath: '$(System.ArtifactsDirectory)')
      BEFORE running any test command. Only use `--no-build` or equivalent skip-build flags when
      this download step is present in the same job.
-  IMPORTANT: Jobs in Azure Pipelines do NOT share a filesystem. The Build job MUST publish its
-  output and the Test job MUST download it. Without these steps, `--no-build` test flags will
-  fail because the compiled artifacts do not exist on the Test job's agent.
+{% endif %}
+  IMPORTANT: Jobs in Azure Pipelines do NOT share a filesystem. If the Build job publishes artifacts and the Test job downloads them, `--no-build` flags can be used safely.
 {% elif analysis.build_command %}
 Use a SINGLE job named "Build" containing the applicable setup, cache, install, and build steps listed below. Do NOT include any test steps.
 {% elif analysis.test_command %}
@@ -199,6 +209,8 @@ CRITICAL RULES:
 - Do NOT include a top-level `concurrency:` block.
 - Do NOT put hyphens before `branches:` in `trigger:` or `pr:`.
 - Do NOT generate test steps or PublishTestResults unless a Test Command is explicitly provided above.
+- If PublishBuildArtifacts@1 is used, PathtoPublish MUST match the exact Build Output Directory provided above ($(Build.SourcesDirectory)/{{ analysis.publish_dir }}). NEVER invent or hardcode paths like build.
+- The task name for publishing build artifacts MUST be plural `PublishBuildArtifacts@1`. NEVER write singular `PublishBuildArtifact@1`.
 - The Docker stage MUST always be included and MUST depend on the CI stage.
 - Every step must have a clear `displayName`.
 - Keep the YAML clean, minimal, and production-ready.
