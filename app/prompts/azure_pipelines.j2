@@ -98,8 +98,9 @@ Use TWO jobs inside the CI stage:
      `DownloadBuildArtifacts@1` (artifactName: 'drop', downloadPath: '$(System.ArtifactsDirectory)')
      BEFORE running any test command. Only use `--no-build` or equivalent skip-build flags when
      this download step is present in the same job.
-{% endif %}
-  IMPORTANT: Jobs in Azure Pipelines do NOT share a filesystem. If the Build job publishes artifacts and the Test job downloads them, `--no-build` flags can be used safely.
+  IMPORTANT: Jobs in Azure Pipelines do NOT share a filesystem. The Build job MUST publish its
+  output and the Test job MUST download it. Without these steps, `--no-build` test flags will
+  fail because the compiled artifacts do not exist on the Test job's agent.
 {% elif analysis.build_command %}
 Use a SINGLE job named "Build" containing the applicable setup, cache, install, and build steps listed below. Do NOT include any test steps.
 {% elif analysis.test_command %}
