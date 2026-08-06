@@ -246,15 +246,19 @@ class NodeDetector(BaseDetector):
         patterns = [
             r'\[\s*-z\s*["\']?\$(\{?([A-Z0-9_]+)\}?)["\']?\s*\]',
             r'test\s+-z\s*["\']?\$(\{?([A-Z0-9_]+)\}?)["\']?',
+            r'\[\s*["\']?\$(\{?([A-Z0-9_]+)\}?)["\']?\s*==?\s*["\']\s*["\']\s*\]',
+            r'\[\s*!\s*["\']?\$(\{?([A-Z0-9_]+)\}?)["\']?\s*\]',
             r'\$\{([A-Z0-9_]+):\?[^}]*\}',
+            r'([A-Z][A-Z0-9_]{2,})\s+variable\s+set',
+            r'No\s+[\w\s]*?([A-Z][A-Z0-9_]{2,})\s+variable',
         ]
 
-        # Scan all .sh files in scripts/ or project root
-        sh_files: list[Path] = []
-        scripts_dir = directory / "scripts"
-        if scripts_dir.is_dir():
-            sh_files.extend(scripts_dir.rglob("*.sh"))
-        sh_files.extend(directory.glob("*.sh"))
+        # Scan all .sh / .bash / .zsh files in the repository (ignoring hidden / vendor dirs)
+        sh_files: list[Path] = [
+            f for f in directory.rglob("*")
+            if f.is_file() and f.suffix in (".sh", ".bash", ".zsh")
+            and not any(skip in f.parts for skip in (".git", "node_modules", "vendor", ".venv"))
+        ]
 
         for sh_file in sh_files:
             try:
