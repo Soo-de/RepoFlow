@@ -101,6 +101,7 @@ Use TWO jobs inside the CI stage:
   IMPORTANT: Jobs in Azure Pipelines do NOT share a filesystem. The Build job MUST publish its
   output and the Test job MUST download it. Without these steps, `--no-build` test flags will
   fail because the compiled artifacts do not exist on the Test job's agent.
+{% endif %}
 {% elif analysis.build_command %}
 Use a SINGLE job named "Build" containing the applicable setup, cache, install, and build steps listed below. Do NOT include any test steps.
 {% elif analysis.test_command %}
