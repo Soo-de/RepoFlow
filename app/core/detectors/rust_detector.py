@@ -81,6 +81,16 @@ class RustDetector(BaseDetector):
     def monorepo_markers(self) -> list[str]:
         return ["Cargo.toml"]
 
-    def default_test_info(self) -> TestInfo:
-        """Rust has a built-in test runner with no config file dependency."""
-        return TestInfo(framework="cargo_test", command="cargo test")
+    def detect_test_framework(self, directory: Path) -> TestInfo | None:
+        """Rust test detection. Only return test info if tests/ dir or #[test] exists."""
+        if (directory / "tests").is_dir():
+            return TestInfo(framework="cargo_test", command="cargo test")
+        src_dir = directory / "src"
+        if src_dir.is_dir():
+            for rs_file in src_dir.rglob("*.rs"):
+                try:
+                    if "#[test]" in rs_file.read_text(encoding="utf-8"):
+                        return TestInfo(framework="cargo_test", command="cargo test")
+                except OSError:
+                    pass
+        return None

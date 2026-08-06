@@ -11,6 +11,7 @@ Generate a production-ready .github/workflows/ci.yml GitHub Actions pipeline bas
 {% if analysis.working_dir %}- Working Directory: {{ analysis.working_dir }}{% endif %}
 {% if analysis.install_command %}- Install Command: {{ analysis.install_command }}{% endif %}
 {% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
+{% if analysis.publish_dir %}- Build Output Directory: {{ analysis.publish_dir }}{% endif %}
 {% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
 {% if analysis.test_command %}
 - Test Command: {{ analysis.test_command }}
@@ -18,6 +19,12 @@ Generate a production-ready .github/workflows/ci.yml GitHub Actions pipeline bas
 - Test Command: NONE (No test framework detected. Do NOT include any test steps or test jobs.)
 {% endif %}
 {% if analysis.services_needed %}- Required Services: {{ analysis.services_needed | join(', ') }}{% endif %}
+{% if analysis.environment_requirements %}
+- Environment Requirements:
+{% for req in analysis.environment_requirements %}
+  * {{ req.key }} = '{{ req.value }}' ({{ req.reason }})
+{% endfor %}
+{% endif %}
 
 OUTPUT RULES:
 1. Output ONLY pure, valid YAML. No markdown fences, no explanations, no surrounding text.
@@ -47,15 +54,17 @@ JOB ORGANIZATION:
 {% if analysis.build_command and analysis.test_command %}
 Use TWO jobs:
   1. A "build" job containing applicable setup, cache, install, and build steps listed below.
+{% if analysis.publish_dir %}
      At the END of the build job, upload build artifacts using `actions/upload-artifact@v4`
-     (name: 'build-output', path pointing to the build output directory).
+     (name: 'build-output', path: '{{ analysis.publish_dir }}').
+{% endif %}
   2. A "test" job (needs: build) containing applicable setup, cache, install, test, and upload steps listed below.
+{% if analysis.publish_dir %}
      At the START of the test job (after setup/cache/install), download the build artifact using
      `actions/download-artifact@v4` (name: 'build-output') BEFORE running any test command.
      Only use `--no-build` or equivalent skip-build flags when this download step is present.
-  IMPORTANT: Jobs in GitHub Actions do NOT share a filesystem. The build job MUST upload its
-  output and the test job MUST download it. Without these steps, `--no-build` test flags will
-  fail because the compiled artifacts do not exist on the test job's runner.
+{% endif %}
+  IMPORTANT: Jobs in GitHub Actions do NOT share a filesystem. If the build job uploads artifacts and the test job downloads them, `--no-build` flags can be used safely.
 {% elif analysis.build_command %}
 Use a SINGLE "build" job containing applicable setup, cache, install, and build steps listed below. Do NOT include test steps.
 {% elif analysis.test_command %}
@@ -114,6 +123,7 @@ CRITICAL RULES:
 - Do NOT generate duplicate steps or duplicate commands. If no install command is provided, do NOT generate an install step.
 - Use modern official action versions (@v4, @v5). Do NOT invent action names.
 - Do NOT generate test steps unless a Test Command is explicitly provided above.
+- If actions/upload-artifact@v4 is used, path MUST match the exact Build Output Directory provided above ({{ analysis.publish_dir }}). NEVER invent or hardcode paths like build.
 - The Docker job MUST always be included and MUST depend on the CI jobs.
 - Every step must have a clear `name:` attribute.
 - Keep the workflow clean, minimal, and production-ready.

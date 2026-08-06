@@ -189,6 +189,24 @@ def test_analyze_node_lockfile_version_signals(tmp_path):
     analysis_v3 = analyze(tmp_path)
     assert analysis_v3.runtime_version == "20"
 
+    # Lockfile v1 + --openssl-legacy-provider in package.json -> elevated to Node 18
+    pkg_openssl = '{"name": "corona", "scripts": {"build": "NODE_OPTIONS=--openssl-legacy-provider ng build"}}'
+    (tmp_path / "package.json").write_text(pkg_openssl, encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"name": "corona", "lockfileVersion": 1}', encoding="utf-8")
+    analysis_openssl = analyze(tmp_path)
+    assert analysis_openssl.runtime_version == "18"
+
+
+def test_generic_script_env_var_scanner(tmp_path):
+    (tmp_path / "package.json").write_text('{"name": "script-app"}', encoding="utf-8")
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "check_env.sh").write_text('if [ -z "$CUSTOM_STAGE_ENV" ]; then exit 1; fi', encoding="utf-8")
+
+    analysis = analyze(tmp_path)
+    env_keys = [req.key for req in analysis.environment_requirements if req.kind == "env_var"]
+    assert "CUSTOM_STAGE_ENV" in env_keys
+
 
 
 

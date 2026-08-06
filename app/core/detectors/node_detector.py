@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from app.core.detectors.base import BaseDetector, DependencyInfo, EnvironmentRequirement, PlatformSetupInfo, TestInfo, ServiceHint
@@ -50,7 +51,7 @@ class NodeDetector(BaseDetector):
             ),
             "pnpm-lock.yaml": DependencyInfo(
                 manager="pnpm", language="javascript",
-                install_command="pnpm install --frozen-lockfile",
+                install_command="corepack enable && pnpm install --frozen-lockfile",
                 build_command="pnpm build",
                 manifest_file="package.json",
                 lockfile="pnpm-lock.yaml",
@@ -112,6 +113,11 @@ class NodeDetector(BaseDetector):
                     self._detect_openssl_requirement(all_deps, directory)
                 )
 
+                # --- Generic script environment variable scanner ---
+                environment_reqs.extend(
+                    self._scan_required_script_env_vars(directory)
+                )
+
                 # --- Build output resolution for Angular projects ---
                 if (directory / "angular.json").exists() or any(dep.startswith("@angular/") for dep in all_deps):
                     build_output_path = self._resolve_angular_output_path(directory)
@@ -137,7 +143,7 @@ class NodeDetector(BaseDetector):
             install_cmd = "yarn install --frozen-lockfile"
         elif (directory / "pnpm-lock.yaml").exists():
             lockfile = "pnpm-lock.yaml"
-            install_cmd = "pnpm install --frozen-lockfile"
+            install_cmd = "corepack enable && pnpm install --frozen-lockfile"
         elif (directory / "npm-shrinkwrap.json").exists():
             lockfile = "npm-shrinkwrap.json"
             install_cmd = "npm ci"
@@ -219,6 +225,60 @@ class NodeDetector(BaseDetector):
                 ),
             ),
         ]
+
+    def _scan_required_script_env_vars(self, directory: Path) -> list[EnvironmentRequirement]:
+        """Generic scanner: detect required environment variables checked by shell scripts.
+
+        Scans shell scripts in project directories for validation patterns like
+        `[ -z "$VAR" ]`, `test -z "$VAR"`, or `${VAR:?error}`.
+        This dynamically discovers build environment requirements without hardcoding variable names.
+        """
+        import re
+
+        ignored_vars = {
+            "PATH", "HOME", "USER", "SHELL", "PWD", "TMPDIR", "TERM",
+            "LANG", "LC_ALL", "NODE_ENV", "CI", "DEBIAN_FRONTEND", "FORCE_COLOR"
+        }
+
+        detected_vars: set[str] = set()
+
+        # Patterns for mandatory environment variable checks in shell scripts
+        patterns = [
+            r'\[\s*-z\s*["\']?\$(\{?([A-Z0-9_]+)\}?)["\']?\s*\]',
+            r'test\s+-z\s*["\']?\$(\{?([A-Z0-9_]+)\}?)["\']?',
+            r'\$\{([A-Z0-9_]+):\?[^}]*\}',
+        ]
+
+        # Scan all .sh files in scripts/ or project root
+        sh_files: list[Path] = []
+        scripts_dir = directory / "scripts"
+        if scripts_dir.is_dir():
+            sh_files.extend(scripts_dir.rglob("*.sh"))
+        sh_files.extend(directory.glob("*.sh"))
+
+        for sh_file in sh_files:
+            try:
+                content = sh_file.read_text(encoding="utf-8")
+                for pattern in patterns:
+                    for match in re.finditer(pattern, content):
+                        var_name = match.group(2) if match.lastindex and match.lastindex >= 2 else match.group(1)
+                        if var_name and var_name not in ignored_vars:
+                            detected_vars.add(var_name)
+            except OSError:
+                pass
+
+        reqs: list[EnvironmentRequirement] = []
+        for var_name in sorted(detected_vars):
+            reqs.append(
+                EnvironmentRequirement(
+                    kind="env_var",
+                    key=var_name,
+                    value="$(Build.SourceBranchName)",
+                    reason=f"Build script checks for required environment variable {var_name}",
+                )
+            )
+
+        return reqs
 
     def _resolve_angular_output_path(self, directory: Path) -> str | None:
         """Parse angular.json to determine the actual build output path.
@@ -346,25 +406,50 @@ class NodeDetector(BaseDetector):
         return ["package.json"]
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
-        # Check dedicated config files first
+        # Check dedicated config files first (jest.config, vitest.config)
         result = super().detect_test_framework(directory)
         if result:
             return result
 
-        # Fall back to parsing package.json for test script references
+        # Check package.json for real test scripts or test dependencies
         pkg_json = directory / "package.json"
         if pkg_json.exists():
             try:
-                content = pkg_json.read_text(encoding="utf-8")
-                if '"test"' in content:
-                    if "jest" in content:
-                        return TestInfo(framework="jest", command="npm test")
-                    elif "vitest" in content:
-                        return TestInfo(framework="vitest", command="npm test")
-                    elif "mocha" in content:
-                        return TestInfo(framework="mocha", command="npm test")
-                    return TestInfo(framework=None, command="npm test")
-            except OSError:
+                data = json.loads(pkg_json.read_text(encoding="utf-8"))
+                scripts = data.get("scripts", {})
+                test_script = scripts.get("test", "")
+
+                # Filter out npm default placeholder script ('no test specified')
+                if "no test specified" in test_script.lower() or not test_script.strip():
+                    test_script = ""
+
+                deps = data.get("dependencies", {}) if isinstance(data.get("dependencies"), dict) else {}
+                dev_deps = data.get("devDependencies", {}) if isinstance(data.get("devDependencies"), dict) else {}
+                all_deps = {**deps, **dev_deps}
+                raw_content = pkg_json.read_text(encoding="utf-8")
+
+                test_frameworks = {
+                    "jest": TestInfo(framework="jest", command="npm test"),
+                    "vitest": TestInfo(framework="vitest", command="npm test"),
+                    "mocha": TestInfo(framework="mocha", command="npm test"),
+                    "karma": TestInfo(framework="karma", command="npm test"),
+                    "cypress": TestInfo(framework="cypress", command="npm test"),
+                    "playwright": TestInfo(framework="playwright", command="npm test"),
+                    "ava": TestInfo(framework="ava", command="npm test"),
+                    "jasmine": TestInfo(framework="jasmine", command="npm test"),
+                }
+
+                for fw_name, test_info in test_frameworks.items():
+                    if fw_name in all_deps or fw_name in test_script or fw_name in raw_content:
+                        return test_info
+
+                # If a valid non-placeholder test script exists AND test files exist on disk
+                if test_script:
+                    test_files = list(directory.rglob("*.test.*")) + list(directory.rglob("*.spec.*"))
+                    test_dirs = [d for d in directory.rglob("*") if d.is_dir() and d.name in ("__tests__", "test", "tests")]
+                    if test_files or test_dirs:
+                        return TestInfo(framework=None, command="npm test")
+            except Exception:
                 pass
 
         return None
@@ -392,16 +477,38 @@ class NodeDetector(BaseDetector):
                 pass
 
         # 3. Generic check: infer compatible Node era from package-lock.json engines / lockfileVersion
-        lockfile_compat = self._detect_lockfile_compat_version(repo_dir)
-        if lockfile_compat:
-            return lockfile_compat
+        version = self._detect_lockfile_compat_version(repo_dir)
 
         # 4. Fallback check: postcss subpath exports incompatibility requiring Node ≤16
-        compat_version = self._detect_postcss_compat_version(repo_dir)
-        if compat_version:
-            return compat_version
+        if not version:
+            version = self._detect_postcss_compat_version(repo_dir)
 
-        return None
+        # 5. OpenSSL compatibility guard:
+        # Node < 17 forbids --openssl-legacy-provider in NODE_OPTIONS.
+        # If the project scripts/deps use --openssl-legacy-provider, Node MUST be >= 17 (e.g. 18)
+        # to prevent `node: --openssl-legacy-provider is not allowed in NODE_OPTIONS` crash.
+        if version:
+            try:
+                major = int(version.split(".")[0])
+                if major < 17 and self._has_openssl_legacy_provider(repo_dir):
+                    return "18"
+            except (ValueError, AttributeError):
+                pass
+
+        return version
+
+    def _has_openssl_legacy_provider(self, repo_dir: Path) -> bool:
+        """Check if package.json scripts or config explicitly use --openssl-legacy-provider."""
+        pkg_json = repo_dir / "package.json"
+        if not pkg_json.exists():
+            return False
+        try:
+            content = pkg_json.read_text(encoding="utf-8")
+            if "--openssl-legacy-provider" in content:
+                return True
+        except Exception:
+            pass
+        return False
 
     def _detect_lockfile_compat_version(self, repo_dir: Path) -> str | None:
         """Inspect package-lock.json for root engines constraints or lockfileVersion signals.
@@ -436,6 +543,52 @@ class NodeDetector(BaseDetector):
 
         except Exception:
             pass
+
+        return None
+
+    def _detect_postcss_compat_version(self, repo_dir: Path) -> str | None:
+        """Detect old build tools that need Node ≤16 due to postcss subpath exports.
+
+        Node 17+ enforces strict "exports" in package.json. Old versions of
+        css-loader, postcss-loader, and Angular CLI internally call
+        require('postcss/package.json') which is not exposed in postcss v8+'s
+        exports map, causing ERR_PACKAGE_PATH_NOT_EXPORTED at build time.
+
+        Returning "16" here caps the Node version before the default (20) kicks in,
+        which also avoids the OpenSSL 3.0 issue on these same old projects.
+        """
+        import json
+        import re
+
+        pkg_json = repo_dir / "package.json"
+        if not pkg_json.exists():
+            return None
+
+        try:
+            data = json.loads(pkg_json.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+        deps = data.get("dependencies", {})
+        dev_deps = data.get("devDependencies", {})
+        all_deps = {**deps, **dev_deps}
+
+        # Packages and their max major versions that trigger the incompatibility
+        compat_thresholds = {
+            "@angular/cli": 12,
+            "@angular/core": 12,
+            "postcss-loader": 4,
+            "css-loader": 5,
+            "@vue/cli-service": 4,
+        }
+
+        for pkg, max_compat_major in compat_thresholds.items():
+            version_spec = all_deps.get(pkg)
+            if not version_spec:
+                continue
+            match = re.search(r"(\d+)", version_spec)
+            if match and int(match.group(1)) <= max_compat_major:
+                return "16"
 
         return None
 
