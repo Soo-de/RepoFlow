@@ -4,6 +4,7 @@ from app.jobs import store
 from app.jobs.store import JobStatus
 from app.core.pipeline import execute as run_pipeline
 from app.core.repo_service import CloneError
+from app.core.readiness import ReadinessError
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ async def run_job(
             status=JobStatus.DONE,
             result={
                 "yaml": result.yaml_output,
+                "dockerfile": result.dockerfile_output,
+                "dockerfile_generated": result.dockerfile_generated,
                 "platform": result.platform,
                 "validation_passed": result.validation_passed,
                 "validation_errors": result.validation_errors,
@@ -47,6 +50,13 @@ async def run_job(
         logger.warning("Job %s: clone failed — %s", job_id, e)
         store.append_log(job_id, "cloning", str(e))
         store.update(job_id, status=JobStatus.FAILED, error=str(e), failed_stage="cloning")
+
+    except ReadinessError as e:
+        blocker_lines = "\n".join(f"• {b}" for b in e.blockers)
+        user_message = f"Pipeline generation cannot continue:\n{blocker_lines}"
+        logger.warning("Job %s: readiness check failed — %s", job_id, e)
+        store.append_log(job_id, "analyzing", user_message)
+        store.update(job_id, status=JobStatus.FAILED, error=user_message, failed_stage="analyzing")
 
     except Exception as e:
         logger.exception("Job %s failed", job_id)

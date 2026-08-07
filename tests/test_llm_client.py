@@ -150,10 +150,15 @@ async def test_pipeline_execute_self_correction():
              patch("app.core.pipeline.analyze") as mock_analyze, \
              patch("app.core.pipeline.detect_platform") as mock_detect:
 
+            from app.core.detectors.base import DependencyInfo
             mock_clone.return_value = MagicMock()
             mock_analyze.return_value = RepoAnalysis(
                 primary_language="Python",
-                dependency_manager="pip",
+                dependency_info=DependencyInfo(
+                    manager="pip",
+                    language="Python",
+                    install_command="pip install -r requirements.txt",
+                ),
                 test_framework="pytest"
             )
             mock_detect.return_value = Platform.GITHUB_ACTIONS

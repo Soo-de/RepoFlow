@@ -6,10 +6,12 @@ Generate a production-ready .github/workflows/ci.yml GitHub Actions pipeline bas
 - Default Branch: {{ analysis.default_branch }}
 {% if analysis.runtime_version %}- Runtime/Language Version: {{ analysis.runtime_version }}{% endif %}
 {% if analysis.manifest_file %}- Manifest File: {{ analysis.manifest_file }}{% endif %}
+{% if analysis.lockfile %}- Lock File: {{ analysis.lockfile }}{% endif %}
 - Dependency Manager: {{ analysis.dependency_manager }}
 {% if analysis.working_dir %}- Working Directory: {{ analysis.working_dir }}{% endif %}
 {% if analysis.install_command %}- Install Command: {{ analysis.install_command }}{% endif %}
 {% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
+{% if analysis.publish_dir %}- Build Output Directory: {{ analysis.publish_dir }}{% endif %}
 {% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
 {% if analysis.test_command %}
 - Test Command: {{ analysis.test_command }}
@@ -17,6 +19,12 @@ Generate a production-ready .github/workflows/ci.yml GitHub Actions pipeline bas
 - Test Command: NONE (No test framework detected. Do NOT include any test steps or test jobs.)
 {% endif %}
 {% if analysis.services_needed %}- Required Services: {{ analysis.services_needed | join(', ') }}{% endif %}
+{% if analysis.environment_requirements %}
+- Environment Requirements:
+{% for req in analysis.environment_requirements %}
+  * {{ req.key }} = '{{ req.value }}' ({{ req.reason }})
+{% endfor %}
+{% endif %}
 
 OUTPUT RULES:
 1. Output ONLY pure, valid YAML. No markdown fences, no explanations, no surrounding text.
@@ -46,7 +54,17 @@ JOB ORGANIZATION:
 {% if analysis.build_command and analysis.test_command %}
 Use TWO jobs:
   1. A "build" job containing applicable setup, cache, install, and build steps listed below.
+{% if analysis.publish_dir %}
+     At the END of the build job, upload build artifacts using `actions/upload-artifact@v4`
+     (name: 'build-output', path: '{{ analysis.publish_dir }}').
+{% endif %}
   2. A "test" job (needs: build) containing applicable setup, cache, install, test, and upload steps listed below.
+{% if analysis.publish_dir %}
+     At the START of the test job (after setup/cache/install), download the build artifact using
+     `actions/download-artifact@v4` (name: 'build-output') BEFORE running any test command.
+     Only use `--no-build` or equivalent skip-build flags when this download step is present.
+{% endif %}
+  IMPORTANT: Jobs in GitHub Actions do NOT share a filesystem. If the build job uploads artifacts and the test job downloads them, `--no-build` flags can be used safely.
 {% elif analysis.build_command %}
 Use a SINGLE "build" job containing applicable setup, cache, install, and build steps listed below. Do NOT include test steps.
 {% elif analysis.test_command %}
@@ -54,15 +72,49 @@ Use a SINGLE "test" job containing applicable setup, cache, install, test, and u
 {% else %}
 Use a SINGLE "ci" job containing applicable setup, cache, and install steps listed below.
 {% endif %}
+{% if analysis.environment_requirements %}
+
+ENVIRONMENT VARIABLES:
+Every job MUST include the following environment variables under `env:` at the job level:
+{% for req in analysis.environment_requirements if req.kind == "env_var" %}
+  {{ req.key }}: '{{ req.value }}'
+{% endfor %}
+{% endif %}
 
 STEP DETAILS (in order within each job):
 a. Checkout using `actions/checkout@v4`.
-{% if analysis.github_setup_action %}b. Set up the {{ analysis.primary_language }} runtime using `{{ analysis.github_setup_action }}`{% if analysis.runtime_version %} with `with: {{ analysis.github_version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Enable dependency caching in the setup action for `{{ analysis.manifest_file if analysis.manifest_file else analysis.dependency_manager }}`.{% endif %}
+{% if setup and setup.task_or_action %}b. Set up the {{ analysis.primary_language }} runtime using `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with `with: {{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}{% if setup.extra_inputs %}{% for k, v in setup.extra_inputs.items() %}, `{{ k }}: '{{ v }}'`{% endfor %}{% endif %}.{% if analysis.cache_key_files %} Enable dependency caching in the setup action. The cache key MUST use files that change when dependency versions change: {{ analysis.cache_key_files | join(', ') }}. NEVER use a project-list or workspace file (e.g. .sln, .slnx) as a cache key source.{% endif %}{% endif %}
 {% if analysis.install_command %}c. Install dependencies: `{{ analysis.install_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
 {% if analysis.build_command %}d. Build: `{{ analysis.build_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
 {% if analysis.test_command %}e. Run tests: `{{ analysis.test_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}.
 f. Upload test results artifact using `actions/upload-artifact@v4` with `if: always()`.{% endif %}
 {% if analysis.services_needed %}g. Declare required services ({{ analysis.services_needed | join(', ') }}) under the job's `services:` key with appropriate health checks.{% endif %}
+
+DOCKER BUILD & PUSH:
+The workflow MUST include an additional job named "docker" that runs AFTER all CI jobs (needs: [build] or [test] or [build, test] depending on which CI jobs exist above).
+This job builds and pushes a Docker image to Docker Hub.
+
+Docker job structure:
+  docker:
+    name: 'Docker Build & Push'
+    runs-on: ubuntu-latest
+    needs: <list of CI job names defined above>
+    steps:
+    - uses: actions/checkout@v4
+    - uses: docker/login-action@v3
+      with:
+        username: {% raw %}${{ secrets.DOCKERHUB_USERNAME }}{% endraw %}
+        password: {% raw %}${{ secrets.DOCKERHUB_PASSWORD }}{% endraw %}
+    - uses: docker/build-push-action@v5
+      with:
+        context: .
+{% if analysis.dockerfile_path %}
+        file: {{ analysis.dockerfile_path }}
+{% endif %}
+        push: true
+        tags: |
+          {% raw %}${{ secrets.DOCKERHUB_USERNAME }}{% endraw %}/{{ analysis.image_name }}:{% raw %}${{ github.sha }}{% endraw %}
+          {% raw %}${{ secrets.DOCKERHUB_USERNAME }}{% endraw %}/{{ analysis.image_name }}:latest
 
 CRITICAL RULES:
 - Include ONLY steps for which specific commands or actions are defined above.
@@ -71,5 +123,7 @@ CRITICAL RULES:
 - Do NOT generate duplicate steps or duplicate commands. If no install command is provided, do NOT generate an install step.
 - Use modern official action versions (@v4, @v5). Do NOT invent action names.
 - Do NOT generate test steps unless a Test Command is explicitly provided above.
+- If actions/upload-artifact@v4 is used, path MUST match the exact Build Output Directory provided above ({{ analysis.publish_dir }}). NEVER invent or hardcode paths like build.
+- The Docker job MUST always be included and MUST depend on the CI jobs.
 - Every step must have a clear `name:` attribute.
 - Keep the workflow clean, minimal, and production-ready.

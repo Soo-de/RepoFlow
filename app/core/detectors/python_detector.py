@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo, ServiceHint
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo, ServiceHint
+from app.core.platform_detect import Platform
 
 
 class PythonDetector(BaseDetector):
@@ -10,17 +11,22 @@ class PythonDetector(BaseDetector):
         return "python"
 
     @property
+    def default_runtime_version(self) -> str:
+        return "3.12"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-python@v5", "python-version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("UsePythonVersion@0", "versionSpec", extra_inputs={"architecture": "x64"}),
+        }
+
+    @property
     def extension_map(self) -> dict[str, str]:
         return {".py": "python"}
 
     @property
     def dependency_markers(self) -> dict[str, DependencyInfo]:
-        setup_kwargs = {
-            "azure_setup_task": "UsePythonVersion@0",
-            "azure_version_key": "versionSpec",
-            "github_setup_action": "actions/setup-python@v5",
-            "github_version_key": "python-version",
-        }
         return {
             "pyproject.toml": DependencyInfo(
                 manager="pip", language="python",
@@ -28,7 +34,6 @@ class PythonDetector(BaseDetector):
                 manifest_file="pyproject.toml",
                 cache_path="$(Pipeline.Workspace)/.pip",
                 cache_env_var="PIP_CACHE_DIR",
-                **setup_kwargs,
             ),
             "requirements.txt": DependencyInfo(
                 manager="pip", language="python",
@@ -36,7 +41,6 @@ class PythonDetector(BaseDetector):
                 manifest_file="requirements.txt",
                 cache_path="$(Pipeline.Workspace)/.pip",
                 cache_env_var="PIP_CACHE_DIR",
-                **setup_kwargs,
             ),
             "Pipfile": DependencyInfo(
                 manager="pipenv", language="python",
@@ -44,22 +48,21 @@ class PythonDetector(BaseDetector):
                 manifest_file="Pipfile",
                 cache_path="$(Pipeline.Workspace)/.pip",
                 cache_env_var="PIP_CACHE_DIR",
-                **setup_kwargs,
             ),
             "poetry.lock": DependencyInfo(
                 manager="poetry", language="python",
                 install_command="poetry install",
-                manifest_file="poetry.lock",
+                manifest_file="pyproject.toml",
+                lockfile="poetry.lock",
                 cache_path="$(Pipeline.Workspace)/.cache/pypoetry",
-                **setup_kwargs,
             ),
             "uv.lock": DependencyInfo(
                 manager="uv", language="python",
                 install_command="uv sync",
-                manifest_file="uv.lock",
+                manifest_file="pyproject.toml",
+                lockfile="uv.lock",
                 cache_path="$(Pipeline.Workspace)/.cache/uv",
                 cache_env_var="UV_CACHE_DIR",
-                **setup_kwargs,
             ),
             "setup.py": DependencyInfo(
                 manager="pip", language="python",
@@ -67,7 +70,6 @@ class PythonDetector(BaseDetector):
                 manifest_file="setup.py",
                 cache_path="$(Pipeline.Workspace)/.pip",
                 cache_env_var="PIP_CACHE_DIR",
-                **setup_kwargs,
             ),
         }
 
@@ -83,12 +85,18 @@ class PythonDetector(BaseDetector):
         """
         install_cmd = base_info.install_command
         manifest = base_info.manifest_file or matched_marker
+        lockfile = base_info.lockfile
 
         if matched_marker in ("pyproject.toml", "setup.py"):
             req_file = directory / "requirements.txt"
             if req_file.exists():
                 install_cmd = "pip install -r requirements.txt"
                 manifest = "requirements.txt"
+                lockfile = "requirements.txt"
+            elif (directory / "poetry.lock").exists():
+                lockfile = "poetry.lock"
+            elif (directory / "uv.lock").exists():
+                lockfile = "uv.lock"
             else:
                 pyproject = directory / "pyproject.toml"
                 if pyproject.exists():
@@ -99,19 +107,39 @@ class PythonDetector(BaseDetector):
                     except OSError:
                         pass
         elif matched_marker == "requirements.txt":
+            lockfile = "requirements.txt"
             if (directory / "requirements-dev.txt").exists():
                 install_cmd = "pip install -r requirements.txt -r requirements-dev.txt"
             elif (directory / "requirements_dev.txt").exists():
                 install_cmd = "pip install -r requirements.txt -r requirements_dev.txt"
+
+        is_static_site = (directory / "mkdocs.yml").exists() or (directory / "pelicanconf.py").exists()
+        if is_static_site:
+            app_type = "static_frontend"
+            publish_dir = "site"
+            runner_image = "nginx:alpine"
+            runner_entrypoint = 'nginx -g "daemon off;"'
+        else:
+            app_type = "runtime_service"
+            publish_dir = None
+            runner_image = "python:3.12-slim"
+            runner_entrypoint = "python main.py"
 
         return DependencyInfo(
             manager=base_info.manager,
             language=base_info.language,
             install_command=install_cmd,
             build_command=base_info.build_command,
+            publish_command=base_info.publish_command,
             manifest_file=manifest,
+            lockfile=lockfile,
             cache_path=base_info.cache_path,
             cache_env_var=base_info.cache_env_var,
+            runner_image=runner_image,
+            runner_entrypoint=runner_entrypoint,
+            app_type=app_type,
+            publish_dir=publish_dir,
+            cache_key_files=[lockfile] if lockfile else [manifest],
         )
 
     @property
@@ -153,7 +181,7 @@ class PythonDetector(BaseDetector):
         return ["pyproject.toml"]
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
-        # Check dedicated config files first
+        # Check dedicated config files first (tox.ini, etc.)
         result = super().detect_test_framework(directory)
         if result:
             return result
@@ -164,21 +192,27 @@ class PythonDetector(BaseDetector):
         if (directory / "test").is_dir():
             return TestInfo(framework="pytest", command="python -m pytest test")
 
-        # Fall back to parsing pyproject.toml for pytest references
-        pyproject = directory / "pyproject.toml"
-        if pyproject.exists():
-            try:
-                content = pyproject.read_text(encoding="utf-8")
-                if "pytest" in content or "unittest" in content:
-                    return TestInfo(framework="pytest", command="python -m pytest")
-            except OSError:
-                pass
-
         # Check for test_*.py or *_test.py files
+        has_test_files = False
         for pattern in ("test_*.py", "*_test.py"):
             for match in directory.rglob(pattern):
-                if not any(skip in match.parts for skip in ("SKIP_DIRS", ".git", "node_modules", ".venv", "venv")):
-                    return TestInfo(framework="pytest", command="python -m pytest")
+                if not any(skip in match.parts for skip in (".git", "node_modules", ".venv", "venv")):
+                    has_test_files = True
+                    break
+        if has_test_files:
+            return TestInfo(framework="pytest", command="python -m pytest")
+
+        # Check manifest files (requirements.txt, pyproject.toml, Pipfile) for test framework dependencies
+        manifest_files = ["requirements.txt", "pyproject.toml", "Pipfile", "setup.py"]
+        for manifest in manifest_files:
+            p = directory / manifest
+            if p.exists():
+                try:
+                    content = p.read_text(encoding="utf-8").lower()
+                    if "pytest" in content or "unittest" in content or "tox" in content:
+                        return TestInfo(framework="pytest", command="python -m pytest")
+                except OSError:
+                    pass
 
         return None
 

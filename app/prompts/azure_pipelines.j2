@@ -10,6 +10,9 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 {% if analysis.manifest_file %}
 - Manifest File: {{ analysis.manifest_file }}
 {% endif %}
+{% if analysis.lockfile %}
+- Lock File: {{ analysis.lockfile }}
+{% endif %}
 - Dependency Manager: {{ analysis.dependency_manager }}
 {% if analysis.working_dir %}
 - Working Directory: {{ analysis.working_dir }}
@@ -19,6 +22,9 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 {% endif %}
 {% if analysis.build_command %}
 - Build Command: {{ analysis.build_command }}
+{% endif %}
+{% if analysis.publish_dir %}
+- Build Output Directory: {{ analysis.publish_dir }}
 {% endif %}
 {% if analysis.test_framework %}
 - Test Framework: {{ analysis.test_framework }}
@@ -30,6 +36,12 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 {% endif %}
 {% if analysis.services_needed %}
 - Required Services: {{ analysis.services_needed | join(', ') }}
+{% endif %}
+{% if analysis.environment_requirements %}
+- Environment Requirements:
+{% for req in analysis.environment_requirements %}
+  * {{ req.key }} = '{{ req.value }}' ({{ req.reason }})
+{% endfor %}
 {% endif %}
 
 OUTPUT RULES:
@@ -66,6 +78,9 @@ stages:
 {% if analysis.cache_env_var %}
       {{ analysis.cache_env_var }}: {{ analysis.cache_path }}
 {% endif %}
+{% for req in analysis.environment_requirements if req.kind == "env_var" %}
+      {{ req.key }}: '{{ req.value }}'
+{% endfor %}
     steps:
       <steps go here>
 
@@ -73,7 +88,20 @@ JOB ORGANIZATION:
 {% if analysis.build_command and analysis.test_command %}
 Use TWO jobs inside the CI stage:
   1. A "Build" job containing the applicable setup, cache, install, and build steps listed below.
+{% if analysis.publish_dir %}
+     At the END of the Build job, publish the build output as a pipeline artifact using
+     `PublishBuildArtifacts@1` (publishLocation: 'Container', PathtoPublish: '$(Build.SourcesDirectory)/{{ analysis.publish_dir }}', artifactName: 'drop').
+{% endif %}
   2. A "Test" job (dependsOn: Build) containing the applicable setup, cache, install, test, and publish steps listed below.
+{% if analysis.publish_dir %}
+     At the START of the Test job (after setup/cache/install), download the build artifact using
+     `DownloadBuildArtifacts@1` (artifactName: 'drop', downloadPath: '$(System.ArtifactsDirectory)')
+     BEFORE running any test command. Only use `--no-build` or equivalent skip-build flags when
+     this download step is present in the same job.
+  IMPORTANT: Jobs in Azure Pipelines do NOT share a filesystem. The Build job MUST publish its
+  output and the Test job MUST download it. Without these steps, `--no-build` test flags will
+  fail because the compiled artifacts do not exist on the Test job's agent.
+{% endif %}
 {% elif analysis.build_command %}
 Use a SINGLE job named "Build" containing the applicable setup, cache, install, and build steps listed below. Do NOT include any test steps.
 {% elif analysis.test_command %}
@@ -83,22 +111,42 @@ Use a SINGLE job named "CI" containing the applicable setup, cache, and install 
 {% endif %}
 
 STEP SYNTAX & RULES (in order within each job):
-{% if analysis.azure_setup_task %}
-a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ analysis.azure_setup_task }}`{% if analysis.runtime_version %} with inputs `{{ analysis.azure_version_key }}: '{{ analysis.runtime_version }}'`{% endif %}. Do NOT use echo commands for runtime setup.
+{% if setup and setup.task_or_action %}
+a. Set up the {{ analysis.primary_language }} runtime. Use task `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with inputs `{{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}{% if setup.extra_inputs %}{% for k, v in setup.extra_inputs.items() %}, `{{ k }}: '{{ v }}'`{% endfor %}{% endif %}. Do NOT use echo commands for runtime setup.
 {% endif %}
-{% if analysis.manifest_file and analysis.cache_path %}
+{% if analysis.cache_key_files and analysis.cache_path %}
 b. Cache dependencies using `Cache@2` BEFORE the install step.
-   IMPORTANT for `Cache@2`: Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
+   IMPORTANT for `Cache@2`:
+   - Use input `path: {{ analysis.cache_path }}` (string), NEVER `paths:` (list).
+   - Every job containing `Cache@2` MUST declare the cache variable under `variables:` at the job level (e.g. `{{ analysis.cache_env_var }}: {{ analysis.cache_path }}`) so the package manager populates the cached path during installation.
+   - The cache key MUST be built from files that change whenever a dependency version changes:
+     {{ analysis.cache_key_files | join(', ') }}
+   - NEVER use a project-list or workspace file (e.g. .sln, .slnx) as a cache key source.
+     Those files only list project paths and do not change when dependency versions are updated.
+{% endif %}
+{% if analysis.environment_requirements %}
+   IMPORTANT: Every job MUST include the following environment variables under `variables:` at the job level:
+{% for req in analysis.environment_requirements if req.kind == "env_var" %}
+   - `{{ req.key }}: '{{ req.value }}'` ({{ req.reason }})
+{% endfor %}
+{% endif %}
+{% if analysis.cache_key_files and analysis.cache_path %}
    Example:
    - task: Cache@2
      displayName: 'Cache dependencies'
      inputs:
-       key: '{{ analysis.primary_language }} | "$(Agent.OS)" | "$(Build.SourcesDirectory)/{{ analysis.manifest_file }}"'
+       key: '{{ analysis.primary_language }} | "$(Agent.OS)" | {% for ckf in analysis.cache_key_files %}"$(Build.SourcesDirectory)/{{ ckf }}"{% if not loop.last %} | {% endif %}{% endfor %}'
        path: {{ analysis.cache_path }}
 {% endif %}
 {% if analysis.install_command %}
 c. Install dependencies using a simple `- script:` step:
+{% if analysis.cache_path %}
+   - script: |
+       mkdir -p {{ analysis.cache_path }}
+       {{ analysis.install_command }}
+{% else %}
    - script: {{ analysis.install_command }}
+{% endif %}
 {% if analysis.working_dir %}
      workingDirectory: {{ analysis.working_dir }}
 {% endif %}
@@ -120,10 +168,37 @@ e. Run tests using a simple `- script:` step:
 {% endif %}
      displayName: 'Run tests'
 f. Publish test results using `PublishTestResults@2` with:
-   - `testResultsFormat: 'JUnit'` (or `'VSTest'` if C# / .NET)
-   - `testResultsFiles: '**/test-results.xml'` (or `'**/*.trx'` if C# / .NET)
+   - `testResultsFormat`: matching the framework test format (e.g. `'JUnit'`, `'VSTest'`, etc.)
+   - `testResultsFiles`: matching the generated test result files pattern
    - `condition: succeededOrFailed()` at the STEP level (outside inputs)
 {% endif %}
+
+DOCKER BUILD & PUSH:
+The pipeline MUST include a second stage named "Docker" that runs AFTER the CI stage (dependsOn: CI).
+This stage builds and pushes a Docker image to Docker Hub using an Azure DevOps Docker Registry service connection.
+
+Docker stage structure:
+- stage: Docker
+  displayName: 'Docker Build & Push'
+  dependsOn: CI
+  jobs:
+  - job: DockerBuildPush
+    displayName: 'Build and Push Docker Image'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: Docker@2
+      displayName: 'Build and Push Docker Image'
+      inputs:
+        command: buildAndPush
+        containerRegistry: 'dockerhub-connection'
+        repository: '$(DOCKERHUB_USERNAME)/{{ analysis.image_name }}'
+        dockerfile: '{% if analysis.dockerfile_path %}$(Build.SourcesDirectory)/{{ analysis.dockerfile_path }}{% else %}**/[dD]ockerfile*{% endif %}'
+        tags: |
+          $(Build.BuildId)
+          latest
+
+IMPORTANT: The Docker stage uses `task: Docker@2` with `containerRegistry: 'dockerhub-connection'`.
 
 CRITICAL RULES:
 - Include ONLY steps for which specific commands or tasks are defined above.
@@ -136,5 +211,8 @@ CRITICAL RULES:
 - Do NOT include a top-level `concurrency:` block.
 - Do NOT put hyphens before `branches:` in `trigger:` or `pr:`.
 - Do NOT generate test steps or PublishTestResults unless a Test Command is explicitly provided above.
+- If PublishBuildArtifacts@1 is used, PathtoPublish MUST match the exact Build Output Directory provided above ($(Build.SourcesDirectory)/{{ analysis.publish_dir }}). NEVER invent or hardcode paths like build.
+- The task name for publishing build artifacts MUST be plural `PublishBuildArtifacts@1`. NEVER write singular `PublishBuildArtifact@1`.
+- The Docker stage MUST always be included and MUST depend on the CI stage.
 - Every step must have a clear `displayName`.
 - Keep the YAML clean, minimal, and production-ready.

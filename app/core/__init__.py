@@ -7,6 +7,7 @@ from app.core.pipeline import execute
 from app.core.llm_client import LLMClient
 from app.core.prompt_builder import PromptBuilder
 from app.core.validation import PipelineValidator, ValidationResult
+from app.core.readiness import ReadinessError
 
 __all__ = [
     "clone", "CloneError",
@@ -18,4 +19,5 @@ __all__ = [
     "PromptBuilder",
     "PipelineValidator",
     "ValidationResult",
+    "ReadinessError",
 ]

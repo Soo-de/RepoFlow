@@ -4,6 +4,8 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 from app.core.detectors import default_registry, DetectorRegistry
+from app.core.detectors.base import BaseDetector, DependencyInfo, EnvironmentRequirement, PlatformSetupInfo
+from app.core.platform_detect import Platform
 
 logger = logging.getLogger(__name__)
 
@@ -30,25 +32,111 @@ class RepoAnalysis:
     primary_language: str = "unknown"
     languages: dict[str, int] = field(default_factory=dict)
     runtime_version: str | None = None
-    dependency_manager: str = "unknown"
-    manifest_file: str | None = None
-    working_dir: str | None = None
-    cache_path: str = "$(Pipeline.Workspace)/.cache"
-    cache_env_var: str | None = None
-    azure_setup_task: str = "UsePythonVersion@0"
-    azure_version_key: str = "versionSpec"
-    github_setup_action: str = "actions/setup-python@v5"
-    github_version_key: str = "python-version"
-    install_command: str = ""
-    build_command: str | None = None
     test_framework: str | None = None
     test_command: str | None = None
     has_dockerfile: bool = False
+    dockerfile_content: str | None = None
+    dockerfile_path: str | None = None
     services_needed: list[str] = field(default_factory=list)
     monorepo: bool = False
     existing_pipeline_files: list[str] = field(default_factory=list)
     entry_points: list[str] = field(default_factory=list)
     default_branch: str = "main"
+    image_name: str = ""
+    matched_detector: BaseDetector | None = None
+    dependency_info: DependencyInfo | None = None
+
+    def apply_dependency_info(self, info: DependencyInfo) -> None:
+        """Store dependency_info and synchronize legacy fields."""
+        self.dependency_info = info
+
+    @property
+    def dependency_manager(self) -> str:
+        return self.dependency_info.manager if self.dependency_info else "unknown"
+
+    @property
+    def manifest_file(self) -> str | None:
+        return self.dependency_info.manifest_file if self.dependency_info else None
+
+    @property
+    def lockfile(self) -> str | None:
+        return self.dependency_info.lockfile if self.dependency_info else None
+
+    @property
+    def additional_manifests(self) -> list[str]:
+        return self.dependency_info.additional_manifests if self.dependency_info else []
+
+    @property
+    def working_dir(self) -> str | None:
+        return self.dependency_info.working_dir if self.dependency_info else None
+
+    @property
+    def cache_path(self) -> str:
+        return (self.dependency_info.cache_path if self.dependency_info and self.dependency_info.cache_path else "$(Pipeline.Workspace)/.cache")
+
+    @property
+    def cache_env_var(self) -> str | None:
+        return self.dependency_info.cache_env_var if self.dependency_info else None
+
+    @property
+    def cache_key_files(self) -> list[str]:
+        """Files whose content changes when dependency versions change.
+
+        Detectors provide explicit cache_key_files for ecosystems where the
+        primary manifest doesn't pin dependency versions (e.g. .NET's .slnx).
+        Falls back to lockfile or manifest_file for backward compatibility.
+        """
+        if self.dependency_info and self.dependency_info.cache_key_files:
+            return self.dependency_info.cache_key_files
+        if self.lockfile:
+            return [self.lockfile]
+        if self.manifest_file:
+            return [self.manifest_file]
+        return []
+
+    @property
+    def install_command(self) -> str:
+        return self.dependency_info.install_command if self.dependency_info else ""
+
+    @property
+    def build_command(self) -> str | None:
+        return self.dependency_info.build_command if self.dependency_info else None
+
+    @property
+    def publish_command(self) -> str | None:
+        return self.dependency_info.publish_command if self.dependency_info else None
+
+    @property
+    def runner_image(self) -> str | None:
+        return self.dependency_info.runner_image if self.dependency_info else None
+
+    @property
+    def runner_entrypoint(self) -> str | None:
+        return self.dependency_info.runner_entrypoint if self.dependency_info else None
+
+    @property
+    def app_type(self) -> str:
+        return self.dependency_info.app_type if self.dependency_info else "runtime_service"
+
+    @property
+    def publish_dir(self) -> str | None:
+        if self.dependency_info:
+            return self.dependency_info.build_output_path or self.dependency_info.publish_dir
+        return None
+
+    @property
+    def environment_requirements(self) -> list[EnvironmentRequirement]:
+        return self.dependency_info.environment_requirements if self.dependency_info else []
+
+    @property
+    def build_output_path(self) -> str | None:
+        return self.dependency_info.build_output_path if self.dependency_info else None
+
+    def get_platform_setup(self, platform: Platform) -> PlatformSetupInfo | None:
+        """Delegate platform-specific setup task/action lookup to the matched detector plugin."""
+        if self.matched_detector:
+            return self.matched_detector.platform_setups.get(platform)
+        return None
 
 
 def analyze(repo_dir: Path, registry: DetectorRegistry | None = None) -> RepoAnalysis:
@@ -71,10 +159,8 @@ def analyze(repo_dir: Path, registry: DetectorRegistry | None = None) -> RepoAna
     _detect_monorepo(repo_dir, result, reg)
     _detect_default_branch(repo_dir, result)
 
-    logger.info(
-        "Analysis complete: language=%s, dep_manager=%s, manifest=%s, working_dir=%s, test=%s",
-        result.primary_language, result.dependency_manager, result.manifest_file, result.working_dir, result.test_framework,
-    )
+    from app.core.analysis_logger import log_analysis_summary
+    log_analysis_summary(result)
     return result
 
 
@@ -101,79 +187,101 @@ def _scan_languages(repo_dir: Path, result: RepoAnalysis, registry: DetectorRegi
         result.primary_language = "unknown"
 
 
+def _format_dependency_info(repo_dir: Path, search_dir: Path, dep_info: DependencyInfo) -> DependencyInfo:
+    """Format manifest_file, lockfile, and working_dir with relative paths if nested."""
+    working_dir = dep_info.working_dir
+    if not working_dir and search_dir != repo_dir:
+        working_dir = search_dir.relative_to(repo_dir).as_posix()
+
+    manifest = dep_info.manifest_file
+    if working_dir and manifest and not ("/" in manifest):
+        manifest = f"{working_dir}/{manifest}"
+
+    lockfile = dep_info.lockfile
+    if working_dir and lockfile and not ("/" in lockfile):
+        lockfile = f"{working_dir}/{lockfile}"
+
+    additional_manifests = [
+        f"{working_dir}/{am}" if (working_dir and not ("/" in am)) else am
+        for am in dep_info.additional_manifests
+    ]
+
+    cache_key_files = [
+        f"{working_dir}/{ckf}" if (working_dir and not ("/" in ckf)) else ckf
+        for ckf in dep_info.cache_key_files
+    ]
+
+    return DependencyInfo(
+        manager=dep_info.manager,
+        language=dep_info.language,
+        install_command=dep_info.install_command,
+        build_command=dep_info.build_command,
+        publish_command=dep_info.publish_command,
+        manifest_file=manifest,
+        lockfile=lockfile,
+        working_dir=working_dir,
+        cache_path=dep_info.cache_path,
+        cache_env_var=dep_info.cache_env_var,
+        runner_image=dep_info.runner_image,
+        runner_entrypoint=dep_info.runner_entrypoint,
+        app_type=dep_info.app_type,
+        publish_dir=dep_info.publish_dir,
+        environment_requirements=dep_info.environment_requirements,
+        build_output_path=dep_info.build_output_path,
+        additional_manifests=additional_manifests,
+        cache_key_files=cache_key_files,
+    )
+
+
+def _get_prioritized_detectors(primary_language: str, detectors: list[BaseDetector]) -> list[BaseDetector]:
+    """Order detectors so that the detector matching primary_language (or its ecosystem) is checked first."""
+    if not primary_language or primary_language == "unknown":
+        return detectors
+
+    matching: list[BaseDetector] = []
+    others: list[BaseDetector] = []
+
+    for d in detectors:
+        if d.language == primary_language or primary_language in d.extension_map.values():
+            matching.append(d)
+        else:
+            others.append(d)
+
+    return matching + others
+
+
 def _detect_dependency_manager(
     repo_dir: Path, result: RepoAnalysis, registry: DetectorRegistry,
 ) -> None:
-    """Identify package manager by querying each detector's dependency markers."""
-    # Check root level first, then immediate subdirectories
+    """Identify package manager by querying detectors prioritizing the primary language."""
+    detectors = _get_prioritized_detectors(result.primary_language, registry.detectors)
     for search_dir in _search_dirs(repo_dir):
-        for detector in registry.detectors:
-            # First check custom detector method (e.g. C# .csproj / .sln rglob)
+        for detector in detectors:
             custom_info = detector.detect_dependency_info(search_dir)
             if custom_info:
-                result.dependency_manager = custom_info.manager
-                result.manifest_file = custom_info.manifest_file
-                # Set working_dir if defined or if search_dir is a subdirectory
-                if custom_info.working_dir:
-                    result.working_dir = custom_info.working_dir
-                elif search_dir != repo_dir:
-                    result.working_dir = search_dir.relative_to(repo_dir).as_posix()
-                else:
-                    result.working_dir = None
-
-                result.cache_path = custom_info.cache_path
-                result.cache_env_var = custom_info.cache_env_var
-                result.azure_setup_task = custom_info.azure_setup_task
-                result.azure_version_key = custom_info.azure_version_key
-                result.github_setup_action = custom_info.github_setup_action
-                result.github_version_key = custom_info.github_version_key
-                result.install_command = custom_info.install_command
-                result.build_command = custom_info.build_command
+                result.matched_detector = detector
+                result.apply_dependency_info(_format_dependency_info(repo_dir, search_dir, custom_info))
                 if result.primary_language == "unknown":
                     result.primary_language = custom_info.language
                 return
 
-            # Then check exact marker files
             for marker_file, dep_info in detector.dependency_markers.items():
                 if (search_dir / marker_file).exists():
                     resolved = detector.resolve_dependency_info(search_dir, marker_file, dep_info)
-                    result.dependency_manager = resolved.manager
-
-                    # Calculate working_dir for subfolders if not explicitly set
-                    if resolved.working_dir:
-                        result.working_dir = resolved.working_dir
-                    elif search_dir != repo_dir:
-                        result.working_dir = search_dir.relative_to(repo_dir).as_posix()
-                    else:
-                        result.working_dir = None
-
-                    # Format manifest_file with working_dir prefix if nested
-                    if result.working_dir and not (resolved.manifest_file and "/" in resolved.manifest_file):
-                        result.manifest_file = f"{result.working_dir}/{resolved.manifest_file or marker_file}"
-                    else:
-                        result.manifest_file = resolved.manifest_file or marker_file
-
-                    result.cache_path = resolved.cache_path
-                    result.cache_env_var = resolved.cache_env_var
-                    result.azure_setup_task = resolved.azure_setup_task
-                    result.azure_version_key = resolved.azure_version_key
-                    result.github_setup_action = resolved.github_setup_action
-                    result.github_version_key = resolved.github_version_key
-                    result.install_command = resolved.install_command
-                    result.build_command = resolved.build_command
+                    result.matched_detector = detector
+                    result.apply_dependency_info(_format_dependency_info(repo_dir, search_dir, resolved))
                     if result.primary_language == "unknown":
                         result.primary_language = resolved.language
                     return
-
-    result.dependency_manager = "unknown"
 
 
 def _detect_test_framework(
     repo_dir: Path, result: RepoAnalysis, registry: DetectorRegistry,
 ) -> None:
-    """Detect test framework by delegating to each detector's custom logic."""
+    """Detect test framework by delegating to detectors prioritizing the primary language."""
+    detectors = _get_prioritized_detectors(result.primary_language, registry.detectors)
     for search_dir in _search_dirs(repo_dir):
-        for detector in registry.detectors:
+        for detector in detectors:
             test_info = detector.detect_test_framework(search_dir)
             if test_info:
                 result.test_framework = test_info.framework
@@ -181,7 +289,7 @@ def _detect_test_framework(
                 return
 
     # Language-based built-in test defaults (Go and Rust have no config files)
-    for detector in registry.detectors:
+    for detector in detectors:
         if detector.language == result.primary_language and hasattr(detector, "default_test_info"):
             default = detector.default_test_info()
             result.test_framework = default.framework
@@ -198,22 +306,70 @@ def _detect_services(
     for search_dir in _search_dirs(repo_dir):
         for detector in registry.detectors:
             for dep_file in detector.dep_files_for_service_scan:
-                path = search_dir / dep_file
-                if not path.exists():
-                    continue
-                try:
-                    content = path.read_text(encoding="utf-8").lower()
-                    for hint in detector.service_hints:
-                        if hint.library.lower() in content:
-                            services.add(hint.service)
-                except OSError:
-                    continue
+                if "*" in dep_file:
+                    target_paths = [
+                        p for p in search_dir.rglob(dep_file)
+                        if not any(skip in p.parts for skip in SKIP_DIRS)
+                    ]
+                else:
+                    target_paths = [search_dir / dep_file]
+
+                for path in target_paths:
+                    if not path.is_file():
+                        continue
+                    try:
+                        content = path.read_text(encoding="utf-8").lower()
+                        for hint in detector.service_hints:
+                            if hint.library.lower() in content:
+                                services.add(hint.service)
+                    except OSError:
+                        continue
 
     result.services_needed = sorted(services)
 
 
+COMMON_DOCKERFILE_PATHS = [
+    "Dockerfile",
+    "dockerfile",
+    "Dockerfile.dev",
+    "Dockerfile.prod",
+    "docker/Dockerfile",
+    "docker/dockerfile",
+    ".docker/Dockerfile",
+]
+
+
 def _detect_dockerfile(repo_dir: Path, result: RepoAnalysis) -> None:
-    result.has_dockerfile = (repo_dir / "Dockerfile").exists()
+    """Detect Dockerfile location in repository (case-insensitive, subfolder, and working-dir aware)."""
+    search_dirs = [repo_dir]
+    if result.dependency_info and result.dependency_info.working_dir:
+        wdir = repo_dir / result.dependency_info.working_dir
+        if wdir.is_dir():
+            search_dirs.insert(0, wdir)
+
+    for base_dir in search_dirs:
+        for relative_path in COMMON_DOCKERFILE_PATHS:
+            full_path = base_dir / relative_path
+            if full_path.is_file():
+                result.has_dockerfile = True
+                result.dockerfile_path = full_path.relative_to(repo_dir).as_posix()
+                return
+
+    # Search recursively for any Dockerfile variant or Containerfile (ignoring skip dirs)
+    for candidate in repo_dir.rglob("*"):
+        if any(skip in candidate.parts for skip in SKIP_DIRS):
+            continue
+        if candidate.is_file():
+            name_lower = candidate.name.lower()
+            if (
+                name_lower == "dockerfile"
+                or name_lower == "containerfile"
+                or name_lower.startswith("dockerfile.")
+                or name_lower.endswith(".dockerfile")
+            ):
+                result.has_dockerfile = True
+                result.dockerfile_path = candidate.relative_to(repo_dir).as_posix()
+                return
 
 
 def _detect_ci_configs(repo_dir: Path, result: RepoAnalysis) -> None:
@@ -259,19 +415,31 @@ def _detect_entry_points(
 def _detect_runtime_version(
     repo_dir: Path, result: RepoAnalysis, registry: DetectorRegistry,
 ) -> None:
-    """Delegate runtime version detection to the matching detector."""
-    for detector in registry.detectors:
-        if detector.language == result.primary_language:
-            version = detector.detect_runtime_version(repo_dir)
-            if version:
-                result.runtime_version = version
-                return
+    """Delegate runtime version detection strictly to the primary language detector, falling back to its default."""
+    primary_detector = result.matched_detector
+    if not primary_detector:
+        for d in registry.detectors:
+            if d.language == result.primary_language or result.primary_language in d.extension_map.values():
+                primary_detector = d
+                break
 
-    # Fallback: try all detectors in case language wasn't matched
+    if primary_detector:
+        version = primary_detector.detect_runtime_version(repo_dir)
+        if version:
+            result.runtime_version = version
+            return
+        if primary_detector.default_runtime_version:
+            result.runtime_version = primary_detector.default_runtime_version
+            return
+
+    # Fallback if primary language was unknown: try all detectors
     for detector in registry.detectors:
         version = detector.detect_runtime_version(repo_dir)
         if version:
             result.runtime_version = version
+            return
+        if detector.default_runtime_version:
+            result.runtime_version = detector.default_runtime_version
             return
 
 

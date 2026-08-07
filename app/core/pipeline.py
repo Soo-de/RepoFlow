@@ -11,10 +11,26 @@ from app.core.pipeline_model import PipelineResult
 from app.core.prompt_builder import PromptBuilder
 from app.core.llm_client import LLMClient
 from app.core.validation import PipelineValidator, strip_markdown_fences
+from app.core.docker_service import build_docker_context
+from app.core.analysis_logger import log_analysis_summary
+from app.core.readiness import check_readiness, ReadinessError
 
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, str], None]
+
+
+def _create_llm_client() -> LLMClient:
+    """Instantiate a shared LLM client from application settings."""
+    return LLMClient(
+        gemini_api_key=settings.gemini_api_key,
+        groq_api_key=settings.groq_api_key,
+        openai_api_key=settings.openai_api_key,
+        provider=settings.llm_provider,
+        gemini_model=settings.gemini_model,
+        groq_model=settings.groq_model,
+        openai_model=settings.openai_model,
+    )
 
 
 async def execute(
@@ -49,29 +65,51 @@ async def execute(
             await _report("analyzing", f"Services: {', '.join(analysis.services_needed)}")
         await _report("analyzing", "Analysis complete")
 
-        # --- Stage 3: Generate ---
-        detected_platform = detect_platform(analysis.existing_pipeline_files, platform)
-        await _report("generating", f"Target platform: {detected_platform.value}")
-        await _report("generating", "Building LLM prompt template")
+        readiness = check_readiness(analysis)
+        for warning in readiness.warnings:
+            await _report("analyzing", f"⚠ {warning.message}")
+        if not readiness.can_proceed:
+            for blocker in readiness.blockers:
+                await _report("analyzing", f"✗ {blocker}")
+            raise ReadinessError(readiness.blockers)
 
-        prompt_builder = PromptBuilder()
-        prompt = prompt_builder.build(detected_platform, analysis)
-
-        await _report("generating", f"Calling LLM API (provider: {settings.llm_provider}) to generate pipeline YAML")
-        llm_client = LLMClient(
-            gemini_api_key=settings.gemini_api_key,
-            groq_api_key=settings.groq_api_key,
-            openai_api_key=settings.openai_api_key,
-            provider=settings.llm_provider,
-            gemini_model=settings.gemini_model,
-            groq_model=settings.groq_model,
-            openai_model=settings.openai_model,
-        )
+        llm_client = _create_llm_client()
         try:
+            # --- Stage 3: Dockerize ---
+            await _report("dockerizing", "Preparing Docker configuration")
+            docker_ctx = await build_docker_context(
+                repo_dir=repo_dir,
+                analysis=analysis,
+                llm_client=llm_client,
+                repo_url=repo_url,
+            )
+            analysis.dockerfile_content = docker_ctx.dockerfile_content
+
+            if docker_ctx.was_generated:
+                await _report("dockerizing", "Dockerfile generated via LLM")
+            else:
+                await _report("dockerizing", "Existing Dockerfile detected and loaded")
+            await _report("dockerizing", f"Docker image: $(DOCKERHUB_USERNAME)/{docker_ctx.image_name}")
+
+            # --- Stage 4: Generate Pipeline ---
+            detected_platform = detect_platform(analysis.existing_pipeline_files, platform)
+            await _report("generating", f"Target platform: {detected_platform.value}")
+            await _report("generating", "Building LLM prompt template")
+
+            prompt_builder = PromptBuilder()
+            # Attach image_name to analysis so templates can reference it
+            analysis.image_name = docker_ctx.image_name
+
+            # Output comprehensive log summary of analysis, dependencies, environment & platform setup
+            log_analysis_summary(analysis, platform=detected_platform, readiness=readiness)
+
+            prompt = prompt_builder.build(detected_platform, analysis)
+
+            await _report("generating", f"Calling LLM API (provider: {settings.llm_provider}) to generate pipeline YAML")
             raw_yaml_output = await llm_client.generate(prompt)
             await _report("generating", "Pipeline generation complete")
 
-            # --- Stage 4: Validate and Self-Correct ---
+            # --- Stage 5: Validate and Self-Correct ---
             await _report("validating", "Validating generated YAML syntax and schema")
             validator = PipelineValidator()
 
@@ -81,10 +119,12 @@ async def execute(
             max_retries = 1
             retry_count = 0
 
-
             while not is_valid and retry_count < max_retries:
                 retry_count += 1
-                await _report("validating", f"Validation failed: fixing errors (Attempt {retry_count}/{max_retries})")
+                await _report("validating", f"Validation found {len(errors)} issue(s):")
+                for err in errors:
+                    await _report("validating", f"  • {err}")
+                await _report("validating", f"Attempting LLM self-correction ({retry_count}/{max_retries})...")
 
                 correction_prompt = prompt_builder.build_correction(
                     invalid_yaml=cleaned_yaml,
@@ -98,24 +138,29 @@ async def execute(
 
                 is_valid, errors = validator.validate(detected_platform, cleaned_yaml, services_needed=analysis.services_needed)
 
-
             if is_valid:
                 await _report("validating", "Validation passed successfully")
             else:
-                await _report("validating", f"Validation found {len(errors)} issue(s)")
+                await _report("validating", f"Validation finished with {len(errors)} unresolved issue(s):")
+                for err in errors:
+                    await _report("validating", f"  • {err}")
 
-            return PipelineResult.from_analysis(
+            result = PipelineResult.from_analysis(
                 analysis=analysis,
                 platform=detected_platform,
                 yaml_output=cleaned_yaml,
                 validation_passed=is_valid,
                 validation_errors=errors,
+                dockerfile_output=docker_ctx.dockerfile_content,
+                dockerfile_generated=docker_ctx.was_generated,
             )
+
+            return result
         finally:
             await llm_client.close()
 
 
-    except CloneError:
+    except (CloneError, ReadinessError):
         raise
 
     except Exception as e:

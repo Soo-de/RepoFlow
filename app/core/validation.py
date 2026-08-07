@@ -22,8 +22,8 @@ class ValidationResult:
 
 
 def strip_markdown_fences(text: str) -> str:
-    """Strip markdown code block fences (```yaml ... ```) if present in LLM response."""
-    text = text.strip()
+    """Strip markdown code block fences (```yaml ... ```) and normalize non-breaking spaces if present."""
+    text = text.replace("\u00a0", " ").strip()
     pattern = r"^```(?:yaml|yml)?\s*\n(.*?)\n```$"
     match = re.match(pattern, text, re.DOTALL | re.IGNORECASE)
     if match:
@@ -95,6 +95,7 @@ def step_matches(step: dict, criteria: dict) -> bool:
             return val_lower.startswith(criteria["starts_with"].lower())
         if "contains" in criteria:
             return criteria["contains"].lower() in val_lower
+        return True
 
     if "script_contains" in criteria:
         script = get_step_script(step)
@@ -275,6 +276,10 @@ class PipelineValidator:
             validator_cls = jsonschema.validators.validator_for(schema)
             validator = validator_cls(schema)
             for err in validator.iter_errors(parsed):
+                # Ignore generic root-level oneOf failure message if path is empty
+                if not err.path and "is not valid under any of the given schemas" in err.message:
+                    continue
+
                 line = loader.line_map.get(id(err.instance))
                 if line is None and err.path:
                     # Resolve parent line number
@@ -337,6 +342,19 @@ class PipelineValidator:
                 logger.exception("Failed running rule-based validation")
                 errors.append(f"Validation System Error (Rules Engine): {err}")
 
+        if errors:
+            self._log_validation_errors(platform, errors)
+
         return len(errors) == 0, errors
 
+    @staticmethod
+    def _log_validation_errors(platform: Platform, errors: list[str]) -> None:
+        """Log detailed validation error breakdown for server-side debugging."""
+        lines = [
+            f"Validation failed for platform '{platform.value}' "
+            f"with {len(errors)} error(s):"
+        ]
+        for i, err in enumerate(errors, 1):
+            lines.append(f"  [{i}] {err}")
+        logger.warning("\n".join(lines))
 

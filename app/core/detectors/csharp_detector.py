@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.detectors.base import BaseDetector, DependencyInfo, TestInfo
+from app.core.detectors.base import BaseDetector, DependencyInfo, PlatformSetupInfo, TestInfo, ServiceHint
+from app.core.platform_detect import Platform
 
 
 class CSharpDetector(BaseDetector):
@@ -8,6 +9,17 @@ class CSharpDetector(BaseDetector):
     @property
     def language(self) -> str:
         return "csharp"
+
+    @property
+    def default_runtime_version(self) -> str:
+        return "8.0"
+
+    @property
+    def platform_setups(self) -> dict[Platform, PlatformSetupInfo]:
+        return {
+            Platform.GITHUB_ACTIONS: PlatformSetupInfo("actions/setup-dotnet@v4", "dotnet-version"),
+            Platform.AZURE_PIPELINES: PlatformSetupInfo("UseDotNet@2", "version", extra_inputs={"packageType": "sdk"}),
+        }
 
     @property
     def extension_map(self) -> dict[str, str]:
@@ -28,10 +40,6 @@ class CSharpDetector(BaseDetector):
                 manifest_file="global.json",
                 cache_path="$(Pipeline.Workspace)/.nuget/packages",
                 cache_env_var="NUGET_PACKAGES",
-                azure_setup_task="UseDotNet@2",
-                azure_version_key="version",
-                github_setup_action="actions/setup-dotnet@v4",
-                github_version_key="dotnet-version",
             ),
             "packages.config": DependencyInfo(
                 manager="nuget", language="csharp",
@@ -40,10 +48,6 @@ class CSharpDetector(BaseDetector):
                 manifest_file="packages.config",
                 cache_path="$(Pipeline.Workspace)/.nuget/packages",
                 cache_env_var="NUGET_PACKAGES",
-                azure_setup_task="UseDotNet@2",
-                azure_version_key="version",
-                github_setup_action="actions/setup-dotnet@v4",
-                github_version_key="dotnet-version",
             ),
             "NuGet.Config": DependencyInfo(
                 manager="dotnet", language="csharp",
@@ -52,12 +56,25 @@ class CSharpDetector(BaseDetector):
                 manifest_file="NuGet.Config",
                 cache_path="$(Pipeline.Workspace)/.nuget/packages",
                 cache_env_var="NUGET_PACKAGES",
-                azure_setup_task="UseDotNet@2",
-                azure_version_key="version",
-                github_setup_action="actions/setup-dotnet@v4",
-                github_version_key="dotnet-version",
             ),
         }
+
+    @property
+    def service_hints(self) -> list[ServiceHint]:
+        return [
+            ServiceHint("Microsoft.EntityFrameworkCore.SqlServer", "mssql"),
+            ServiceHint("Microsoft.Data.SqlClient", "mssql"),
+            ServiceHint("System.Data.SqlClient", "mssql"),
+            ServiceHint("Npgsql", "postgres"),
+            ServiceHint("Pomelo.EntityFrameworkCore.MySql", "mysql"),
+            ServiceHint("MySql.Data", "mysql"),
+            ServiceHint("StackExchange.Redis", "redis"),
+            ServiceHint("MongoDB.Driver", "mongodb"),
+        ]
+
+    @property
+    def dep_files_for_service_scan(self) -> list[str]:
+        return ["*.csproj", "packages.config"]
 
     @property
     def entry_point_patterns(self) -> list[str]:
@@ -77,8 +94,14 @@ class CSharpDetector(BaseDetector):
             [f for f in directory.rglob("*.sln") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
             key=lambda f: len(f.relative_to(directory).parts)
         )
+        slnx_files = sorted(
+            [f for f in directory.rglob("*.slnx") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
+            key=lambda f: len(f.relative_to(directory).parts)
+        )
 
-        if sln_files:
+        if slnx_files:
+            target_file = slnx_files[0]
+        elif sln_files:
             target_file = sln_files[0]
         elif csproj_files:
             target_file = csproj_files[0]
@@ -97,23 +120,55 @@ class CSharpDetector(BaseDetector):
             file_name = rel_path.rsplit("/", 1)[1]
             install_cmd = f"dotnet restore {file_name}"
             build_cmd = f"dotnet build {file_name} --configuration Release --no-restore"
+            publish_cmd = f"dotnet publish {file_name} --configuration Release -o /app/publish"
         else:
             install_cmd = f"dotnet restore {rel_path}"
             build_cmd = f"dotnet build {rel_path} --configuration Release --no-restore"
+            publish_cmd = f"dotnet publish {rel_path} --configuration Release -o /app/publish"
+
+        lockfile = "packages.lock.json" if (directory / "packages.lock.json").exists() else None
+
+        entrypoint = self._resolve_entrypoint_dll(target_file, csproj_files)
+
+        # If a solution file (.sln / .slnx) is selected, include referenced .csproj project files as additional manifests
+        additional_manifests: list[str] = []
+        if target_file.suffix in (".sln", ".slnx"):
+            for csproj in csproj_files:
+                try:
+                    additional_manifests.append(csproj.relative_to(directory).as_posix())
+                except ValueError:
+                    additional_manifests.append(csproj.name)
+
+        # .csproj/.fsproj files contain <PackageReference> with version pins;
+        # .sln/.slnx only list project paths and must not be used for cache keys
+        cache_key_files = [
+            csproj.relative_to(directory).as_posix() for csproj in csproj_files
+        ]
+        fsproj_files = sorted(
+            [f for f in directory.rglob("*.fsproj") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))],
+            key=lambda f: len(f.relative_to(directory).parts)
+        )
+        cache_key_files.extend(
+            f.relative_to(directory).as_posix() for f in fsproj_files
+        )
 
         return DependencyInfo(
             manager="dotnet",
             language="csharp",
             install_command=install_cmd,
             build_command=build_cmd,
+            publish_command=publish_cmd,
             manifest_file=rel_path,
+            lockfile=lockfile,
             working_dir=working_dir,
             cache_path="$(Pipeline.Workspace)/.nuget/packages",
             cache_env_var="NUGET_PACKAGES",
-            azure_setup_task="UseDotNet@2",
-            azure_version_key="version",
-            github_setup_action="actions/setup-dotnet@v4",
-            github_version_key="dotnet-version",
+            runner_image="mcr.microsoft.com/dotnet/aspnet:10.0",
+            runner_entrypoint=entrypoint,
+            app_type="runtime_service",
+            publish_dir=None,
+            additional_manifests=additional_manifests,
+            cache_key_files=cache_key_files,
         )
 
     def resolve_dependency_info(
@@ -128,11 +183,6 @@ class CSharpDetector(BaseDetector):
         test_dirs = [d for d in directory.rglob("*") if d.is_dir() and d.name.lower() in ("test", "tests", "specs")]
 
         if test_projects or test_dirs:
-            return TestInfo(framework="dotnet_test", command="dotnet test --no-build --logger trx")
-
-        # If any .csproj exists, default to dotnet test
-        all_projects = [f for f in directory.rglob("*.csproj") if not any(skip in f.parts for skip in (".git", "bin", "obj", "node_modules"))]
-        if all_projects:
             return TestInfo(framework="dotnet_test", command="dotnet test --no-build --logger trx")
 
         return None
@@ -181,3 +231,37 @@ class CSharpDetector(BaseDetector):
                 pass
 
         return None
+
+    def _resolve_entrypoint_dll(self, target_file: Path, csproj_files: list[Path]) -> str:
+        """Determine the main executable DLL name.
+
+        For solution files (.sln / .slnx), inspect project files to find the web or
+        executable application assembly containing Program.cs/Startup.cs or Web SDKs.
+        """
+        if target_file.suffix == ".csproj" or not csproj_files:
+            return f"dotnet {target_file.stem}.dll"
+
+        # 1. Search for .csproj in directory containing Program.cs or Startup.cs
+        for csproj in csproj_files:
+            csproj_dir = csproj.parent
+            if (csproj_dir / "Program.cs").exists() or (csproj_dir / "Startup.cs").exists():
+                return f"dotnet {csproj.stem}.dll"
+
+        # 2. Search for .csproj using Web SDK or Executable output type
+        for csproj in csproj_files:
+            try:
+                content = csproj.read_text(encoding="utf-8")
+                if "Microsoft.NET.Sdk.Web" in content or "<OutputType>Exe</OutputType>" in content:
+                    return f"dotnet {csproj.stem}.dll"
+            except OSError:
+                continue
+
+        # 3. Search for .csproj with Web, Api, UI, App, or Server in project stem
+        for csproj in csproj_files:
+            name_lower = csproj.stem.lower()
+            if any(token in name_lower for token in ("web", "api", "ui", "app", "server", "service")):
+                return f"dotnet {csproj.stem}.dll"
+
+        # 4. Fallback to the first project or target stem
+        return f"dotnet {csproj_files[0].stem}.dll"
+
