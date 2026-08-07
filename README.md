@@ -2,9 +2,12 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Supported-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![Google Gemini](https://img.shields.io/badge/Google%20Gemini-AI-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
+![Groq](https://img.shields.io/badge/Groq-AI%20Fallback-F55036?style=for-the-badge&logo=groq&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Supported-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
 ![Azure Pipelines](https://img.shields.io/badge/Azure%20Pipelines-Supported-0078D4?style=for-the-badge&logo=azuredevops&logoColor=white)
+![HTMX](https://img.shields.io/badge/HTMX-SSE%20Streaming-3366CC?style=for-the-badge&logo=htmx&logoColor=white)
 
 **Autonomous, Self-Healing CI/CD Pipeline & Containerization Generator.**
 
