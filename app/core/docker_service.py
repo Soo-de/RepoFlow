@@ -35,21 +35,12 @@ def read_dockerfile(repo_dir: Path, custom_path: str | None = None) -> str:
 
 
 def is_placeholder_dockerfile(content: str) -> bool:
-    """Check if Dockerfile content is a placeholder/stub without real build directives."""
+    """Check if Dockerfile content is empty or lacks a valid FROM directive."""
     stripped = content.strip()
     if not stripped:
         return True
-
-    # A valid Dockerfile must contain a FROM directive
-    has_from = any(line.strip().upper().startswith("FROM ") for line in stripped.splitlines())
-    if not has_from:
-        return True
-
-    # Check if file is small (< 150 chars) and contains placeholder keywords
-    if len(stripped) < 150 and "placeholder" in stripped.lower():
-        return True
-
-    return False
+    # If "FROM " exists anywhere in the file (case-insensitive), it is a valid Dockerfile
+    return "FROM " not in stripped.upper()
 
 
 async def generate_dockerfile(llm_client, analysis: RepoAnalysis) -> str:
@@ -75,7 +66,7 @@ async def build_docker_context(
         try:
             content = read_dockerfile(repo_dir, getattr(analysis, "dockerfile_path", None))
             if not is_placeholder_dockerfile(content):
-                logger.info("Valid existing Dockerfile found, reading content")
+                logger.info("Valid existing Dockerfile found, reading content directly")
                 return DockerContext(
                     dockerfile_content=content,
                     image_name=image_name,
