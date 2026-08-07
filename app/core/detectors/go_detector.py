@@ -92,11 +92,10 @@ class GoDetector(BaseDetector):
         return ["go.mod"]
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
-        """Go has a built-in test runner. Only return test info if *_test.go files exist."""
-        test_files = list(directory.rglob("*_test.go"))
-        if test_files:
-            return TestInfo(framework="go_test", command="go test ./...")
-        return None
+        """Go has a built-in test runner. Only return test info if test files exist."""
+        if not self.has_test_files(directory):
+            return None
+        return TestInfo(framework="go_test", command="go test ./...")
 
     def detect_runtime_version(self, repo_dir: Path) -> str | None:
         # Check .go-version first

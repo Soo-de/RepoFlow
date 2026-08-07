@@ -178,9 +178,34 @@ class CSharpDetector(BaseDetector):
         return resolved or base_info
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
-        # Search recursively for test projects or test directories
-        test_projects = [f for f in directory.rglob("*.csproj") if any(token in f.name.lower() for token in ("test", "spec"))]
-        test_dirs = [d for d in directory.rglob("*") if d.is_dir() and d.name.lower() in ("test", "tests", "specs")]
+        # Stop early if no test source files or test folders exist on disk
+        if not self.has_test_files(directory):
+            return None
+
+        # Look for .csproj/.fsproj/.vbproj test projects or NuGet test package references
+        test_package_markers = ("microsoft.net.test.sdk", "xunit", "nunit", "mstest", "bunit")
+
+        test_projects = []
+        for proj in directory.rglob("*.[cfv]sproj"):
+            if any(skip in proj.parts for skip in (".git", "bin", "obj", "node_modules")):
+                continue
+            name_lower = proj.name.lower()
+            if any(token in name_lower for token in ("test", "spec")):
+                test_projects.append(proj)
+            else:
+                try:
+                    content = proj.read_text(encoding="utf-8", errors="ignore").lower()
+                    if any(pkg in content for pkg in test_package_markers):
+                        test_projects.append(proj)
+                except Exception:
+                    pass
+
+        test_dirs = [
+            d for d in directory.rglob("*")
+            if d.is_dir() and any(token in d.name.lower() for token in ("test", "tests", "spec", "specs"))
+            and not any(skip in d.parts for skip in (".git", "bin", "obj", "node_modules"))
+            and any(f.suffix in (".cs", ".fs", ".vb") for f in d.rglob("*"))
+        ]
 
         if test_projects or test_dirs:
             return TestInfo(framework="dotnet_test", command="dotnet test --no-build --logger trx")

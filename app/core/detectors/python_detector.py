@@ -202,17 +202,18 @@ class PythonDetector(BaseDetector):
         if has_test_files:
             return TestInfo(framework="pytest", command="python -m pytest")
 
-        # Check manifest files (requirements.txt, pyproject.toml, Pipfile) for test framework dependencies
-        manifest_files = ["requirements.txt", "pyproject.toml", "Pipfile", "setup.py"]
-        for manifest in manifest_files:
-            p = directory / manifest
-            if p.exists():
-                try:
-                    content = p.read_text(encoding="utf-8").lower()
-                    if "pytest" in content or "unittest" in content or "tox" in content:
-                        return TestInfo(framework="pytest", command="python -m pytest")
-                except OSError:
-                    pass
+        # Check project manifest files for test dependencies if test files are present in the directory
+        if self.has_test_files(directory):
+            manifest_files = ["requirements.txt", "pyproject.toml", "Pipfile", "setup.py"]
+            for manifest in manifest_files:
+                p = directory / manifest
+                if p.exists():
+                    try:
+                        content = p.read_text(encoding="utf-8").lower()
+                        if "pytest" in content or "unittest" in content or "tox" in content:
+                            return TestInfo(framework="pytest", command="python -m pytest")
+                    except OSError:
+                        pass
 
         return None
 

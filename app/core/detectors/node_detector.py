@@ -443,15 +443,13 @@ class NodeDetector(BaseDetector):
                     "jasmine": TestInfo(framework="jasmine", command="npm test"),
                 }
 
-                for fw_name, test_info in test_frameworks.items():
-                    if fw_name in all_deps or fw_name in test_script or fw_name in raw_content:
-                        return test_info
+                if self.has_test_files(directory):
+                    for fw_name, test_info in test_frameworks.items():
+                        if fw_name in all_deps or fw_name in test_script or fw_name in raw_content:
+                            return test_info
 
-                # If a valid non-placeholder test script exists AND test files exist on disk
-                if test_script:
-                    test_files = list(directory.rglob("*.test.*")) + list(directory.rglob("*.spec.*"))
-                    test_dirs = [d for d in directory.rglob("*") if d.is_dir() and d.name in ("__tests__", "test", "tests")]
-                    if test_files or test_dirs:
+                    # Fall back to npm test if package.json defines a custom test script and test files exist
+                    if test_script:
                         return TestInfo(framework=None, command="npm test")
             except Exception:
                 pass

@@ -187,13 +187,52 @@ class BaseDetector(ABC):
         """
         return base_info
 
+    def has_test_files(self, directory: Path) -> bool:
+        """Checks if test folders or test source files exist in the repository directory.
+
+        Returns True if a test directory containing files or a matching test file is found.
+        Prevents generating test pipeline steps when test dependencies exist without test files.
+        """
+        # Common test directory names
+        test_dirs = {"tests", "test", "__tests__", "spec", "specs"}
+        for d_name in test_dirs:
+            t_dir = directory / d_name
+            if t_dir.is_dir():
+                try:
+                    # Check if directory contains at least one non-hidden file
+                    if any(f.is_file() for f in t_dir.rglob("*")):
+                        return True
+                except Exception:
+                    pass
+
+        # Universal test file glob patterns across languages
+        test_patterns = (
+            "test_*.py", "*_test.py",
+            "*.test.js", "*.spec.js", "*.test.ts", "*.spec.ts", "*.test.jsx", "*.spec.jsx", "*.test.tsx", "*.spec.tsx",
+            "*Test.java", "*Tests.java", "Test*.java",
+            "*Test*.cs", "*Tests*.cs", "*Spec*.cs", "*Test*.fs", "*Test*.csproj", "*Tests*.csproj",
+            "*_test.go", "*_test.rs",
+            "*Test.php", "test_*.rb", "*_spec.rb"
+        )
+        for pattern in test_patterns:
+            try:
+                for match in directory.rglob(pattern):
+                    if not any(skip in match.parts for skip in (".git", "node_modules", "vendor", "bin", "obj", ".venv", "venv")):
+                        return True
+            except Exception:
+                pass
+
+        return False
+
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
         """Detect test framework in the given directory.
 
         Default implementation checks self.test_configs against the directory.
-        Subclasses can override for richer detection logic (e.g. parsing
-        pyproject.toml or package.json contents).
+        Returns None if no test files exist on disk.
         """
+        if not self.has_test_files(directory):
+            return None
+
         for config_file, info in self.test_configs.items():
             if (directory / config_file).exists():
                 return info
