@@ -1,58 +1,18 @@
-You are an expert DevOps engineer specializing in Docker containerization for production workloads.
+You are an expert DevOps engineer specializing in production-ready Docker containerization.
 
-Generate a production-ready, multi-stage Dockerfile based on the following project analysis:
+Generate a clean, lightweight runtime Dockerfile based on the following project analysis:
 
 - Primary Language: {{ analysis.primary_language }}
 {% if analysis.runtime_version %}
 - Runtime Version: {{ analysis.runtime_version }}
 {% endif %}
-- Dependency Manager: {{ analysis.dependency_manager }}
-{% if analysis.manifest_file %}
-- Manifest File: {{ analysis.manifest_file }}
-{% endif %}
-{% if analysis.additional_manifests %}
-- Additional Manifest / Project Files: {{ analysis.additional_manifests | join(', ') }}
-{% endif %}
-{% if analysis.lockfile %}
-- Lock File: {{ analysis.lockfile }}
-{% endif %}
-{% if analysis.working_dir %}
-- Working Directory: {{ analysis.working_dir }} (Project source files reside in this subdirectory. Ensure all file operations, build commands, and install steps execute within this working directory context).
-{% endif %}
-{% if analysis.install_command %}
-- Install Command: {{ analysis.install_command }}
-{% endif %}
-{% if analysis.publish_command %}
-- Publish Command: {{ analysis.publish_command }}
-{% elif analysis.build_command %}
-- Build Command: {{ analysis.build_command }}
-{% endif %}
-{% if analysis.entry_points %}
-- Entry Points: {{ analysis.entry_points | join(', ') }}
-{% endif %}
-
-DOCKERFILE STRUCTURE:
-Use a multi-stage build with exactly TWO stages:
-
-Stage 1 — Builder:
-  - Use an official SDK/builder base image with a valid version tag matching the primary language and runtime version (do NOT use `.x` in Docker image tags).
-  - Set WORKDIR to /app.
-{% if analysis.working_dir %}
-  - Copy all dependency manifest and project files{% if analysis.manifest_file or analysis.additional_manifests or analysis.lockfile %} ({{ (([analysis.manifest_file] if analysis.manifest_file else []) + analysis.additional_manifests + ([analysis.lockfile] if analysis.lockfile else [])) | join(', ') }}){% endif %} from `{{ analysis.working_dir }}/` into `./` before running dependency installation. Ensure all primary and additional manifest/project files are copied (preserving folder structure if nested) so dependency restoration commands can resolve all internal references.
-  - Install dependencies using the detected install command.
-  - Copy remaining application source files from `{{ analysis.working_dir }}/` into `./`.
-{% else %}
-  - Copy all dependency manifest and project files{% if analysis.manifest_file or analysis.additional_manifests or analysis.lockfile %} ({{ (([analysis.manifest_file] if analysis.manifest_file else []) + analysis.additional_manifests + ([analysis.lockfile] if analysis.lockfile else [])) | join(', ') }}){% endif %} before running dependency installation. Ensure all primary and additional manifest/project files are copied (preserving folder structure if nested) so dependency restoration commands can resolve all internal references.
-  - Install dependencies using the detected install command.
-  - Copy remaining application source files.
-{% endif %}
-  - Run the build or publish command if provided{% if analysis.publish_command %} (Use Publish Command: `{{ analysis.publish_command }}`){% endif %}. Ensure all build artifacts are published to a dedicated output directory (e.g. `/app/publish` or `/app/dist`) so that published binaries are available for Stage 2.
-
 - Application Type: {{ analysis.app_type }}
 {% if analysis.build_output_path %}
-- Resolved Build Output Path: {{ analysis.build_output_path }}
+- Pre-compiled Artifact Path: {{ analysis.build_output_path }}
 {% elif analysis.publish_dir %}
-- Compiled Publish Output Directory: {{ analysis.publish_dir }}
+- Pre-compiled Artifact Path: {{ analysis.publish_dir }}
+{% else %}
+- Pre-compiled Artifact Path: dist
 {% endif %}
 {% if analysis.runner_image %}
 - Recommended Runner Base Image: {{ analysis.runner_image }}
@@ -68,22 +28,31 @@ Environment Requirements:
 {% endfor %}
 {% endif %}
 
-Stage 2 — Runner:
-  - Render Stage 2 based on Application Type:
-    * If Application Type is `static_frontend`: Use `nginx:alpine` as runner base image, remove default NGINX content with `RUN rm -rf /usr/share/nginx/html/*`, then copy compiled static web assets from `/app/{{ analysis.build_output_path or analysis.publish_dir or 'dist' }}` into NGINX document root `/usr/share/nginx/html`, EXPOSE port 80, and set CMD to `["nginx", "-g", "daemon off;"]`.
-    * If Application Type is `runtime_service`: Use the recommended runner base image (`{{ analysis.runner_image }}`), set WORKDIR to /app, copy published build artifacts from builder stage output directory into `/app`, EXPOSE application port, and set CMD/ENTRYPOINT to execute `{{ analysis.runner_entrypoint }}`.
-  - Set environment variables for production execution.
+DOCKERFILE DESIGN PRINCIPLE (BUILD ONCE, PASS ARTIFACT TO DOCKER):
+The CI/CD pipeline compiles the application binaries in prior build steps. The Dockerfile MUST be a clean, minimal runtime container that consumes these pre-compiled build artifacts. Do NOT include heavy SDK/compilation stages or dependency restoration steps inside the Dockerfile.
+
+STRUCTURE & RULES:
+1. Base Image & File Copy:
+   - For `static_frontend`: Use `nginx:alpine` as the base image. Remove default NGINX content (`RUN rm -rf /usr/share/nginx/html/*`), then copy pre-built static web assets from `{{ analysis.build_output_path or analysis.publish_dir or 'dist' }}` into `/usr/share/nginx/html`. EXPOSE port 80 and set CMD to `["nginx", "-g", "daemon off;"]`.
+   - For `runtime_service`: Use the recommended runtime base image (`{{ analysis.runner_image or 'alpine:latest' }}`). Set WORKDIR to `/app`.
+{% if analysis.build_command or analysis.publish_dir %}
+     Copy pre-compiled published build artifacts from `{{ analysis.build_output_path or analysis.publish_dir or 'publish' }}` into `/app`.
+{% else %}
+     Copy application source files from `./` into `/app` (and run dependency installation if required by the runtime environment).
+{% endif %}
+     EXPOSE the application port, and set CMD/ENTRYPOINT to execute `{{ analysis.runner_entrypoint }}`.
+
+2. Environment Variables:
 {% if analysis.environment_requirements %}
-  - Set the following environment variables in the Dockerfile using ENV:
+   Set the following environment variables in the Dockerfile using ENV:
 {% for req in analysis.environment_requirements if req.kind == "env_var" %}
-    ENV {{ req.key }}="{{ req.value }}"
+   ENV {{ req.key }}="{{ req.value }}"
 {% endfor %}
 {% endif %}
 
 OUTPUT RULES:
 1. Output ONLY a valid Dockerfile. No markdown fences, no explanations, no surrounding text.
-2. Use the EXACT dependency manager and commands from the analysis above.
-3. Follow Docker best practices: minimize layers, leverage build cache, use .dockerignore awareness.
-4. Do NOT include COPY for .env files, secrets, or credentials.
-5. Add clear comments for each logical section.
-6. Keep the Dockerfile clean, minimal, and production-ready.
+2. Follow Docker best practices: minimize image layers, use lean official runtime images, add clear comment lines for logical sections.
+3. Do NOT include COPY for .env files, secrets, or credentials.
+4. Keep the Dockerfile clean, minimal, modular, and production-ready.
+

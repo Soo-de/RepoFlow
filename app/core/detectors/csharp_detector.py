@@ -120,11 +120,11 @@ class CSharpDetector(BaseDetector):
             file_name = rel_path.rsplit("/", 1)[1]
             install_cmd = f"dotnet restore {file_name}"
             build_cmd = f"dotnet build {file_name} --configuration Release --no-restore"
-            publish_cmd = f"dotnet publish {file_name} --configuration Release -o /app/publish"
+            publish_cmd = f"dotnet publish {file_name} --configuration Release -o ./publish"
         else:
             install_cmd = f"dotnet restore {rel_path}"
             build_cmd = f"dotnet build {rel_path} --configuration Release --no-restore"
-            publish_cmd = f"dotnet publish {rel_path} --configuration Release -o /app/publish"
+            publish_cmd = f"dotnet publish {rel_path} --configuration Release -o ./publish"
 
         lockfile = "packages.lock.json" if (directory / "packages.lock.json").exists() else None
 
@@ -166,7 +166,7 @@ class CSharpDetector(BaseDetector):
             runner_image="mcr.microsoft.com/dotnet/aspnet:10.0",
             runner_entrypoint=entrypoint,
             app_type="runtime_service",
-            publish_dir=None,
+            publish_dir="publish",
             additional_manifests=additional_manifests,
             cache_key_files=cache_key_files,
         )
