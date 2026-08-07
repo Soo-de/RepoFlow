@@ -112,6 +112,7 @@ Primary static analysis module. Scans project directory structure, dependencies,
   - `dependency_manager: str`: Manager name (e.g., `"pip"`, `"poetry"`, `"npm"`, `"cargo"`).
   - `install_command: str`: Shell command to install dependencies.
   - `build_command: str | None`: Command to build artifacts (e.g., `"npm run build"`).
+  - `publish_dir: str | None`: Resolved pre-compiled build output directory (e.g., `"dist"`, `"publish"`, `"target"`) used for targeted artifact publishing.
   - `test_framework: str | None`: Identified testing suite (e.g., `"pytest"`, `"jest"`).
   - `test_command: str | None`: Shell command to execute tests.
   - `has_dockerfile: bool`: Indicates if `Dockerfile` is present in root.
