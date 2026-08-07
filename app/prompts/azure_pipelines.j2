@@ -107,7 +107,7 @@ Use a SINGLE job named "Build" containing the applicable setup, cache, install, 
 {% elif analysis.test_command %}
 Use a SINGLE job named "Test" containing the applicable setup, cache, install, test, and publish steps listed below.
 {% else %}
-Use a SINGLE job named "CI" containing the applicable setup, cache, and install steps listed below.
+There are NO build steps and NO test steps. Omit the CI stage entirely and generate ONLY the "Docker" stage. Do NOT generate a dummy CI job or dummy install steps.
 {% endif %}
 
 STEP SYNTAX & RULES (in order within each job):
@@ -174,7 +174,12 @@ f. Publish test results using `PublishTestResults@2` with:
 {% endif %}
 
 DOCKER BUILD & PUSH:
-The pipeline MUST include a second stage named "Docker" that runs AFTER the CI stage (dependsOn: CI).
+The pipeline MUST include a stage named "Docker" to build and push a Docker image to Docker Hub.
+{% if analysis.build_command or analysis.test_command %}
+This stage runs AFTER the CI stage (`dependsOn: CI`).
+{% else %}
+Since there are no CI jobs, this stage runs as the single stage of the pipeline (do NOT include `dependsOn: CI`).
+{% endif %}
 This stage builds and pushes a Docker image to Docker Hub using an Azure DevOps Docker Registry service connection.
 
 Docker stage structure:

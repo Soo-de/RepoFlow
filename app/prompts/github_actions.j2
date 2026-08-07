@@ -70,7 +70,7 @@ Use a SINGLE "build" job containing applicable setup, cache, install, and build 
 {% elif analysis.test_command %}
 Use a SINGLE "test" job containing applicable setup, cache, install, test, and upload steps listed below.
 {% else %}
-Use a SINGLE "ci" job containing applicable setup, cache, and install steps listed below.
+There are NO build steps and NO test steps. Omit the CI jobs entirely and generate ONLY the "docker" job. Do NOT generate a dummy CI job or dummy install steps.
 {% endif %}
 {% if analysis.environment_requirements %}
 
@@ -91,14 +91,20 @@ f. Upload test results artifact using `actions/upload-artifact@v4` with `if: alw
 {% if analysis.services_needed %}g. Declare required services ({{ analysis.services_needed | join(', ') }}) under the job's `services:` key with appropriate health checks.{% endif %}
 
 DOCKER BUILD & PUSH:
-The workflow MUST include an additional job named "docker" that runs AFTER all CI jobs (needs: [build] or [test] or [build, test] depending on which CI jobs exist above).
-This job builds and pushes a Docker image to Docker Hub.
+The workflow MUST include an additional job named "docker" to build and push a Docker image to Docker Hub.
+{% if analysis.build_command or analysis.test_command %}
+This job runs AFTER all CI jobs (`needs: [build]` or `needs: [test]` or `needs: [build, test]`).
+{% else %}
+Since there are no CI jobs, this job runs directly (do NOT include a `needs:` key).
+{% endif %}
 
 Docker job structure:
   docker:
     name: 'Docker Build & Push'
     runs-on: ubuntu-latest
+{% if analysis.build_command or analysis.test_command %}
     needs: <list of CI job names defined above>
+{% endif %}
     steps:
     - uses: actions/checkout@v4
     - uses: docker/login-action@v3

@@ -82,15 +82,7 @@ class RustDetector(BaseDetector):
         return ["Cargo.toml"]
 
     def detect_test_framework(self, directory: Path) -> TestInfo | None:
-        """Rust test detection. Only return test info if tests/ dir or #[test] exists."""
-        if (directory / "tests").is_dir():
-            return TestInfo(framework="cargo_test", command="cargo test")
-        src_dir = directory / "src"
-        if src_dir.is_dir():
-            for rs_file in src_dir.rglob("*.rs"):
-                try:
-                    if "#[test]" in rs_file.read_text(encoding="utf-8"):
-                        return TestInfo(framework="cargo_test", command="cargo test")
-                except OSError:
-                    pass
-        return None
+        """Rust test detection. Only return test info if test files exist."""
+        if not self.has_test_files(directory):
+            return None
+        return TestInfo(framework="cargo_test", command="cargo test")
