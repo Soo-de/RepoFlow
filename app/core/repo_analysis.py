@@ -340,22 +340,36 @@ COMMON_DOCKERFILE_PATHS = [
 
 
 def _detect_dockerfile(repo_dir: Path, result: RepoAnalysis) -> None:
-    """Detect Dockerfile location in repository (case-insensitive and subfolder aware)."""
-    for relative_path in COMMON_DOCKERFILE_PATHS:
-        full_path = repo_dir / relative_path
-        if full_path.is_file():
-            result.has_dockerfile = True
-            result.dockerfile_path = relative_path
-            return
+    """Detect Dockerfile location in repository (case-insensitive, subfolder, and working-dir aware)."""
+    search_dirs = [repo_dir]
+    if result.dependency_info and result.dependency_info.working_dir:
+        wdir = repo_dir / result.dependency_info.working_dir
+        if wdir.is_dir():
+            search_dirs.insert(0, wdir)
 
-    # Search for any file named Dockerfile or dockerfile (ignoring skip dirs)
+    for base_dir in search_dirs:
+        for relative_path in COMMON_DOCKERFILE_PATHS:
+            full_path = base_dir / relative_path
+            if full_path.is_file():
+                result.has_dockerfile = True
+                result.dockerfile_path = full_path.relative_to(repo_dir).as_posix()
+                return
+
+    # Search recursively for any Dockerfile variant or Containerfile (ignoring skip dirs)
     for candidate in repo_dir.rglob("*"):
         if any(skip in candidate.parts for skip in SKIP_DIRS):
             continue
-        if candidate.is_file() and candidate.name.lower() == "dockerfile":
-            result.has_dockerfile = True
-            result.dockerfile_path = candidate.relative_to(repo_dir).as_posix()
-            return
+        if candidate.is_file():
+            name_lower = candidate.name.lower()
+            if (
+                name_lower == "dockerfile"
+                or name_lower == "containerfile"
+                or name_lower.startswith("dockerfile.")
+                or name_lower.endswith(".dockerfile")
+            ):
+                result.has_dockerfile = True
+                result.dockerfile_path = candidate.relative_to(repo_dir).as_posix()
+                return
 
 
 def _detect_ci_configs(repo_dir: Path, result: RepoAnalysis) -> None:
