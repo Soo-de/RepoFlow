@@ -110,7 +110,7 @@ def test_analyze_csharp_project_with_sln(tmp_path):
     assert analysis.runtime_version == "10.0.x"
     assert analysis.install_command == "dotnet restore App.sln"
     assert analysis.build_command == "dotnet build App.sln --configuration Release --no-restore"
-    assert analysis.publish_command == "dotnet publish App.sln --configuration Release -o /app/publish"
+    assert analysis.publish_command == "dotnet publish App.sln --configuration Release -o ./publish"
     assert "WebApi/WebApi.csproj" in analysis.additional_manifests
     assert analysis.runner_entrypoint == "dotnet WebApi.dll"
     assert analysis.services_needed == []
@@ -147,7 +147,7 @@ def test_analyze_csharp_project_nested_without_sln(tmp_path):
     assert analysis.working_dir == "WebApi"
     assert analysis.install_command == "dotnet restore WebApi.csproj"
     assert analysis.build_command == "dotnet build WebApi.csproj --configuration Release --no-restore"
-    assert analysis.publish_command == "dotnet publish WebApi.csproj --configuration Release -o /app/publish"
+    assert analysis.publish_command == "dotnet publish WebApi.csproj --configuration Release -o ./publish"
 
 
 def test_analyze_csharp_project_with_slnx(tmp_path):
@@ -164,7 +164,7 @@ def test_analyze_csharp_project_with_slnx(tmp_path):
     assert analysis.manifest_file == "App.slnx"
     assert analysis.install_command == "dotnet restore App.slnx"
     assert analysis.build_command == "dotnet build App.slnx --configuration Release --no-restore"
-    assert analysis.publish_command == "dotnet publish App.slnx --configuration Release -o /app/publish"
+    assert analysis.publish_command == "dotnet publish App.slnx --configuration Release -o ./publish"
     assert analysis.runner_entrypoint == "dotnet WebApi.dll"
 
 
