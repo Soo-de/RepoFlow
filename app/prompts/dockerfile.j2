@@ -1,19 +1,18 @@
+{% set pub_dir = analysis.build_output_path or analysis.publish_dir or ('publish' if analysis.app_type == 'runtime_service' else 'dist') %}
+{% set artifact_path = (analysis.working_dir ~ '/' ~ pub_dir) if (analysis.working_dir and not pub_dir.startswith(analysis.working_dir)) else pub_dir %}
 You are an expert DevOps engineer specializing in production-ready Docker containerization.
 
-Generate a clean, lightweight runtime Dockerfile based on the following project analysis:
+Generate a clean, lightweight, single-stage runtime Dockerfile based on the following project analysis:
 
 - Primary Language: {{ analysis.primary_language }}
 {% if analysis.runtime_version %}
 - Runtime Version: {{ analysis.runtime_version }}
 {% endif %}
 - Application Type: {{ analysis.app_type }}
-{% if analysis.build_output_path %}
-- Pre-compiled Artifact Path: {{ analysis.build_output_path }}
-{% elif analysis.publish_dir %}
-- Pre-compiled Artifact Path: {{ analysis.publish_dir }}
-{% else %}
-- Pre-compiled Artifact Path: dist
+{% if analysis.working_dir %}
+- Working Directory: {{ analysis.working_dir }}
 {% endif %}
+- Pre-compiled Artifact Path (relative to repository root): {{ artifact_path }}
 {% if analysis.runner_image %}
 - Recommended Runner Base Image: {{ analysis.runner_image }}
 {% endif %}
@@ -33,12 +32,12 @@ The CI/CD pipeline compiles the application binaries in prior build steps. The D
 
 STRUCTURE & RULES:
 1. Base Image & File Copy:
-   - For `static_frontend`: Use `nginx:alpine` as the base image. Remove default NGINX content (`RUN rm -rf /usr/share/nginx/html/*`), then copy pre-built static web assets from `{{ analysis.build_output_path or analysis.publish_dir or 'dist' }}` into `/usr/share/nginx/html`. EXPOSE port 80 and set CMD to `["nginx", "-g", "daemon off;"]`.
-   - For `runtime_service`: Use the recommended runtime base image (`{{ analysis.runner_image or 'alpine:latest' }}`). Set WORKDIR to `/app`.
+   - For `static_frontend`: Use `nginx:alpine` as base image. Remove default NGINX content with `RUN rm -rf /usr/share/nginx/html/*`. Copy pre-built static web assets from `{{ artifact_path }}` directly into NGINX document root `/usr/share/nginx/html/` (use trailing slash, e.g. `COPY {{ artifact_path }}/ /usr/share/nginx/html/` so that `index.html` sits directly inside `/usr/share/nginx/html/index.html`). EXPOSE port 80, and set CMD to `["nginx", "-g", "daemon off;"]`.
+   - For `runtime_service`: Use the recommended runner base image (`{{ analysis.runner_image or 'alpine:latest' }}`). Set WORKDIR to `/app`.
 {% if analysis.build_command or analysis.publish_dir %}
-     Copy pre-compiled published build artifacts from `{{ analysis.build_output_path or analysis.publish_dir or 'publish' }}` into `/app`.
+     Copy pre-compiled published build artifacts from `{{ artifact_path }}` into `/app`.
 {% else %}
-     Copy application source files from `./` into `/app` (and run dependency installation if required by the runtime environment).
+     Copy application source files from `{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}.` into `/app` (and run dependency installation if required by the runtime environment).
 {% endif %}
      EXPOSE the application port, and set CMD/ENTRYPOINT to execute `{{ analysis.runner_entrypoint }}`.
 
@@ -52,7 +51,7 @@ STRUCTURE & RULES:
 
 OUTPUT RULES:
 1. Output ONLY a valid Dockerfile. No markdown fences, no explanations, no surrounding text.
-2. Follow Docker best practices: minimize image layers, use lean official runtime images, add clear comment lines for logical sections.
+2. Follow Docker best practices: minimize layers, leverage build cache, use lean official runtime images.
 3. Do NOT include COPY for .env files, secrets, or credentials.
-4. Keep the Dockerfile clean, minimal, modular, and production-ready.
-
+4. Add clear comments for each logical section.
+5. Keep the Dockerfile clean, minimal, and production-ready.
