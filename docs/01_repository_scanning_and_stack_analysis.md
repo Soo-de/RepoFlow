@@ -139,10 +139,10 @@ Primary static analysis module. Scans project directory structure, dependencies,
 - Matches markers against `DEPENDENCY_MARKERS` map (e.g., `pyproject.toml`, `package.json`, `Cargo.toml`).
 - Populates `result.dependency_manager`, `result.install_command`, `result.build_command`, and fallback `result.primary_language`.
 
-##### `_detect_test_framework(repo_dir: Path, result: RepoAnalysis) -> None`
-- Scans root and subdirectories using `_check_test_framework_in_dir()`.
-- Inspects config files (`pytest.ini`, `jest.config.js`, `vitest.config.ts`) and parses `pyproject.toml` / `package.json` file contents for test dependency keywords (`pytest`, `jest`, `vitest`, `mocha`).
-- Sets `result.test_framework` and `result.test_command`.
+##### `_detect_test_framework(repo_dir: Path, result: RepoAnalysis, registry: DetectorRegistry) -> None`
+- Delegates framework resolution to language detectors, prioritizing the primary language.
+- Calls `has_test_files()` to verify that actual test source files or test folders exist on disk before assigning a test command.
+- If no test files exist in the repository, leaves `result.test_framework` and `result.test_command` as `None`, preventing false-positive test steps and avoiding CI stage generation when no build/test tasks exist.
 
 ##### `_detect_services(repo_dir: Path, result: RepoAnalysis) -> None`
 - Reads contents of dependency manifest files (`requirements.txt`, `package.json`, `Cargo.toml`, `go.mod`).
