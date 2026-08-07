@@ -186,11 +186,23 @@ def generate_ai_summary(
 
     providers = []
     if provider == "groq":
-        providers = [("Groq", _call_groq_api, groq_key), ("OpenAI", _call_openai_api, openai_key)]
+        providers = [
+            ("Groq", _call_groq_api, groq_key),
+            ("OpenAI", _call_openai_api, openai_key),
+            ("Gemini", _call_gemini_api, gemini_key),
+        ]
     elif provider == "openai":
-        providers = [("OpenAI", _call_openai_api, openai_key)]
+        providers = [
+            ("OpenAI", _call_openai_api, openai_key),
+            ("Groq", _call_groq_api, groq_key),
+            ("Gemini", _call_gemini_api, gemini_key),
+        ]
     elif provider == "gemini":
-        providers = [("Gemini", _call_gemini_api, gemini_key)]
+        providers = [
+            ("Gemini", _call_gemini_api, gemini_key),
+            ("Groq", _call_groq_api, groq_key),
+            ("OpenAI", _call_openai_api, openai_key),
+        ]
     else:
         providers = [
             ("Groq", _call_groq_api, groq_key),
