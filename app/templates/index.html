@@ -5,34 +5,22 @@
 {% block content %}
 <section class="hero">
     <h1>Generate CI/CD Pipelines</h1>
-    <p class="hero-subtitle">Point us to your repository and we'll generate a production-ready pipeline configuration.</p>
+    <p class="hero-subtitle">Point us to your repository and we'll generate a production-ready pipeline configuration.
+    </p>
 </section>
 
 <section class="form-container">
-    <form hx-post="/generate"
-          hx-target="#job-queue"
-          hx-swap="afterbegin"
-          hx-on:htmx:after-request="document.getElementById('job-queue-section').style.display = 'block'; this.reset();">
+    <form hx-post="/generate" hx-target="#job-queue" hx-swap="afterbegin"
+        hx-on:htmx:after-request="document.getElementById('job-queue-section').style.display = 'block'; this.reset();">
         <div class="generate-form">
             <div class="form-group">
                 <label for="repo_url">Repository URL</label>
-                <input
-                    type="url"
-                    id="repo_url"
-                    name="repo_url"
-                    placeholder="https://github.com/user/repo"
-                    required
-                >
+                <input type="url" id="repo_url" name="repo_url" placeholder="https://github.com/user/repo" required>
             </div>
 
             <div class="form-group">
                 <label for="pat">Personal Access Token</label>
-                <input
-                    type="password"
-                    id="pat"
-                    name="pat"
-                    placeholder="Optional — required for private repos"
-                >
+                <input type="password" id="pat" name="pat" placeholder="Optional — required for private repos">
                 <span class="form-hint">Your token is never stored. It's used once during cloning and discarded.</span>
             </div>
 
@@ -45,20 +33,28 @@
                 </select>
             </div>
 
+            <div class="form-group dockerfile-option-group">
+                <label for="force_dockerfile">Dockerfile Option</label>
+                <select id="force_dockerfile" name="force_dockerfile">
+                    <option value="false" selected>Default</option>
+                    <option value="true">Force AI Dockerfile Generation</option>
+                </select>
+            </div>
+
             <button type="submit" class="btn-primary">Generate Pipeline</button>
         </div>
     </form>
 </section>
 
-<section id="job-queue-section" class="queue-section" {% if not job_rows %}style="display: none;"{% endif %}>
+<section id="job-queue-section" class="queue-section" {% if not job_rows %}style="display: none;" {% endif %}>
     <div class="queue-header">
         <h2>Pipeline Jobs</h2>
     </div>
     <div id="job-queue" class="job-queue">
         {% if job_rows %}
-            {% for row in job_rows %}
-                {{ row | safe }}
-            {% endfor %}
+        {% for row in job_rows %}
+        {{ row | safe }}
+        {% endfor %}
         {% endif %}
     </div>
 </section>

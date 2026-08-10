@@ -56,12 +56,12 @@ Use TWO jobs:
   1. A "build" job containing applicable setup, cache, install, and build steps listed below.
 {% if analysis.publish_dir or analysis.build_command %}
      At the END of the build job, upload compiled build output artifacts using `actions/upload-artifact@v4`
-     (name: 'build-output', path: '{{ analysis.publish_dir or "dist" }}'). NEVER publish the workspace root (`.`).
+     (name: 'build-output', path: '{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}'). NEVER publish the workspace root (`.`).
 {% endif %}
   2. A "test" job (needs: build) containing applicable setup, cache, install, test, and upload steps listed below.
 {% if analysis.publish_dir or analysis.build_command %}
      At the START of the test job (after setup/cache/install), download the build artifact using
-     `actions/download-artifact@v4` (name: 'build-output', path: '{{ analysis.publish_dir or "dist" }}') BEFORE running any test command.
+     `actions/download-artifact@v4` (name: 'build-output', path: '{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}') BEFORE running any test command.
      Only use `--no-build` or equivalent skip-build flags when this download step is present.
 {% endif %}
   IMPORTANT: Jobs in GitHub Actions do NOT share a filesystem. If the build job uploads artifacts and the test job downloads them, `--no-build` flags can be used safely.
@@ -69,7 +69,7 @@ Use TWO jobs:
 Use a SINGLE "build" job containing applicable setup, cache, install, and build steps listed below. Do NOT include test steps.
 {% if analysis.publish_dir or analysis.build_command %}
 At the END of the build job, upload compiled build output artifacts using `actions/upload-artifact@v4`
-(name: 'build-output', path: '{{ analysis.publish_dir or "dist" }}'). NEVER publish the workspace root (`.`).
+(name: 'build-output', path: '{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}'). NEVER publish the workspace root (`.`).
 {% endif %}
 {% elif analysis.test_command %}
 Use a SINGLE "test" job containing applicable setup, cache, install, test, and upload steps listed below.

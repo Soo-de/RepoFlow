@@ -35,9 +35,10 @@ def _create_llm_client() -> LLMClient:
 
 async def execute(
     repo_url: str,
-    pat: str,
-    platform: str,
+    pat: str = "",
+    platform: str = "auto",
     on_progress: ProgressCallback | None = None,
+    force_dockerfile: bool = False,
 ) -> PipelineResult:
     workspace = None
 
@@ -82,6 +83,7 @@ async def execute(
                 analysis=analysis,
                 llm_client=llm_client,
                 repo_url=repo_url,
+                force_dockerfile=force_dockerfile,
             )
             analysis.dockerfile_content = docker_ctx.dockerfile_content
 

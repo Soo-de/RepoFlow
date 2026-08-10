@@ -14,6 +14,7 @@ async def run_job(
     repo_url: str,
     pat: str,
     platform: str,
+    force_dockerfile: bool = False,
 ) -> None:
     current_stage = "cloning"
 
@@ -29,6 +30,7 @@ async def run_job(
             pat=pat,
             platform=platform,
             on_progress=on_progress,
+            force_dockerfile=force_dockerfile,
         )
         store.append_log(job_id, "done", "Pipeline generation complete")
         store.update(

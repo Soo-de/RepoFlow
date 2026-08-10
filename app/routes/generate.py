@@ -30,10 +30,11 @@ async def generate_pipeline(
     repo_url: str = Form(...),
     pat: str = Form(""),
     platform: str = Form("auto"),
+    force_dockerfile: bool = Form(False),
 ):
     job_id = str(uuid.uuid4())
     store.create(job_id, repo_url=repo_url)
-    asyncio.create_task(run_job(job_id, repo_url, pat, platform))
+    asyncio.create_task(run_job(job_id, repo_url, pat, platform, force_dockerfile=force_dockerfile))
 
     job = store.get(job_id)
     return HTMLResponse(content=_render_job_row(job_id, job))
