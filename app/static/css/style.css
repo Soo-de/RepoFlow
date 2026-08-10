@@ -202,6 +202,10 @@ footer {
     opacity: 0.7;
 }
 
+.dockerfile-option-group {
+    margin-top: 0.5rem;
+}
+
 
 /* ───── Buttons ───── */
 

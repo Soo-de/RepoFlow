@@ -290,7 +290,11 @@ def _detect_test_framework(
 
     # Language-based built-in test defaults (Go and Rust have no config files)
     for detector in detectors:
-        if detector.language == result.primary_language and hasattr(detector, "default_test_info"):
+        if (
+            detector.language == result.primary_language
+            and hasattr(detector, "default_test_info")
+            and detector.has_test_files(repo_dir)
+        ):
             default = detector.default_test_info()
             result.test_framework = default.framework
             result.test_command = default.command

@@ -69,11 +69,15 @@ def test_prompt_builder_dockerfile_csharp():
             install_command="dotnet restore App.sln",
             manifest_file="App.sln",
             additional_manifests=["WebApi/WebApi.csproj"],
+            publish_dir="publish",
+            runner_image="mcr.microsoft.com/dotnet/aspnet:10.0",
+            runner_entrypoint="dotnet WebApi.dll",
+            app_type="runtime_service",
         ),
     )
     prompt = builder.build_dockerfile(analysis)
-    assert "Additional Manifest / Project Files: WebApi/WebApi.csproj" in prompt
-    assert "Copy all dependency manifest and project files" in prompt
-    assert "App.sln, WebApi/WebApi.csproj" in prompt
+    assert "Primary Language: csharp" in prompt
+    assert "mcr.microsoft.com/dotnet/aspnet:10.0" in prompt
+    assert "dotnet WebApi.dll" in prompt
 
 

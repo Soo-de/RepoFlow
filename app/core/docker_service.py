@@ -58,11 +58,15 @@ async def build_docker_context(
     analysis: RepoAnalysis,
     llm_client,
     repo_url: str,
+    force_dockerfile: bool = False,
 ) -> DockerContext:
-    """Orchestrate Dockerfile resolution: read valid existing Dockerfile or generate new via LLM."""
+    """Orchestrate Dockerfile resolution: read valid existing Dockerfile or generate new via LLM.
+
+    If force_dockerfile is True, bypasses reading existing repository Dockerfile and forces AI generation.
+    """
     image_name = extract_repo_name(repo_url)
 
-    if analysis.has_dockerfile:
+    if analysis.has_dockerfile and not force_dockerfile:
         try:
             content = read_dockerfile(repo_dir, getattr(analysis, "dockerfile_path", None))
             if not is_placeholder_dockerfile(content):
@@ -76,7 +80,11 @@ async def build_docker_context(
         except (OSError, UnicodeDecodeError) as err:
             logger.warning("Failed reading existing Dockerfile (%s). Generating via LLM.", err)
 
-    logger.info("Generating Dockerfile via LLM")
+    if force_dockerfile:
+        logger.info("Forced AI Dockerfile generation requested by user")
+    else:
+        logger.info("Generating Dockerfile via LLM")
+
     content = await generate_dockerfile(llm_client, analysis)
     return DockerContext(
         dockerfile_content=content,

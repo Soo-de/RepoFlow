@@ -9,6 +9,7 @@ def test_analyze_python_project(tmp_path):
     # Setup mock repository files
     (tmp_path / "main.py").write_text("print('hello')", encoding="utf-8")
     (tmp_path / "utils.py").write_text("def add(a, b): return a + b", encoding="utf-8")
+    (tmp_path / "test_utils.py").write_text("def test_add(): assert True", encoding="utf-8")
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "demo"\nrequires-python = "3.11"\ndependencies = ["pytest", "psycopg2"]',
         encoding="utf-8",
@@ -23,6 +24,17 @@ def test_analyze_python_project(tmp_path):
     assert analysis.test_framework == "pytest"
     assert "postgres" in analysis.services_needed
     assert "main.py" in analysis.entry_points
+
+
+def test_python_project_without_test_files(tmp_path):
+    (tmp_path / "main.py").write_text("print('hello')", encoding="utf-8")
+    (tmp_path / "requirements.txt").write_text("pytest\nrequests", encoding="utf-8")
+
+    analysis = analyze(tmp_path)
+
+    assert analysis.primary_language == "python"
+    assert analysis.test_framework is None
+    assert analysis.test_command is None
 
 
 def test_python_project_default_version_isolated_from_node(tmp_path):
@@ -40,6 +52,7 @@ def test_python_project_default_version_isolated_from_node(tmp_path):
 
 def test_analyze_node_project(tmp_path):
     (tmp_path / "index.ts").write_text("console.log('hi');", encoding="utf-8")
+    (tmp_path / "index.test.ts").write_text("test('hi', () => {});", encoding="utf-8")
     (tmp_path / "package.json").write_text(
         '{"name": "app", "scripts": {"test": "jest"}, "devDependencies": {"jest": "^29.0.0"}}',
         encoding="utf-8",
@@ -97,7 +110,7 @@ def test_analyze_csharp_project_with_sln(tmp_path):
     assert analysis.runtime_version == "10.0.x"
     assert analysis.install_command == "dotnet restore App.sln"
     assert analysis.build_command == "dotnet build App.sln --configuration Release --no-restore"
-    assert analysis.publish_command == "dotnet publish App.sln --configuration Release -o /app/publish"
+    assert analysis.publish_command == "dotnet publish App.sln --configuration Release -o ./publish"
     assert "WebApi/WebApi.csproj" in analysis.additional_manifests
     assert analysis.runner_entrypoint == "dotnet WebApi.dll"
     assert analysis.services_needed == []
@@ -134,7 +147,7 @@ def test_analyze_csharp_project_nested_without_sln(tmp_path):
     assert analysis.working_dir == "WebApi"
     assert analysis.install_command == "dotnet restore WebApi.csproj"
     assert analysis.build_command == "dotnet build WebApi.csproj --configuration Release --no-restore"
-    assert analysis.publish_command == "dotnet publish WebApi.csproj --configuration Release -o /app/publish"
+    assert analysis.publish_command == "dotnet publish WebApi.csproj --configuration Release -o ./publish"
 
 
 def test_analyze_csharp_project_with_slnx(tmp_path):
@@ -151,7 +164,7 @@ def test_analyze_csharp_project_with_slnx(tmp_path):
     assert analysis.manifest_file == "App.slnx"
     assert analysis.install_command == "dotnet restore App.slnx"
     assert analysis.build_command == "dotnet build App.slnx --configuration Release --no-restore"
-    assert analysis.publish_command == "dotnet publish App.slnx --configuration Release -o /app/publish"
+    assert analysis.publish_command == "dotnet publish App.slnx --configuration Release -o ./publish"
     assert analysis.runner_entrypoint == "dotnet WebApi.dll"
 
 
