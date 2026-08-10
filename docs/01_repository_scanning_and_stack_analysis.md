@@ -259,3 +259,24 @@ app/core/repo_service.py   app/core/repo_analysis.py    app/core/platform_detect
                       ▼
            PipelineResult returned to Job Store & Web UI
 ```
+
+---
+
+## 📦 Generated Pipeline Build & Artifact Publishing Architecture
+
+RepoFlow enforces a multi-stage **Build once, reuse everywhere** artifact architecture in all generated CI/CD workflows (Azure Pipelines & GitHub Actions).
+
+### Why This Architecture Was Implemented
+
+1. **Eliminating Redundant Build Overhead (Performance)**:
+   - In traditional multi-job CI pipelines, jobs (`Build`, `Test`, `Docker`) run on isolated virtual machines with clean filesystems.
+   - Without artifact sharing, each subsequent job is forced to run `dotnet restore` + `dotnet build` (or `npm run build`) from scratch, doubling or tripling pipeline execution time.
+   - By running `PublishPipelineArtifact@1` (Azure) or `actions/upload-artifact@v4` (GitHub) at the end of the `Build` job, compiled binaries are packaged into a reusable pipeline artifact (`drop` / `build-output`).
+
+2. **Ensuring Strict Binary Parity**:
+   - Downloading pre-compiled build artifacts via `DownloadPipelineArtifact@2` / `actions/download-artifact@v4` in `Test` and `Docker` jobs ensures that tests are run against—and Docker images are built from—the **exact binaries** produced during compilation, eliminating "works on build job but fails on test job" inconsistencies.
+
+3. **Isolated Publishing vs Compilation**:
+   - For compiled ecosystems (.NET, Go, Rust, Java), RepoFlow distinguishes between compilation (`build_command`) and artifact packaging (`publish_command` to `publish_dir`).
+   - This ensures intermediate obj/bin clutter is discarded while clean, self-contained deployment packages are published and containerized.
+
