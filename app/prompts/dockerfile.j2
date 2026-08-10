@@ -31,8 +31,7 @@ DOCKERFILE DESIGN PRINCIPLE (BUILD ONCE, PASS ARTIFACT TO DOCKER):
 The CI/CD pipeline compiles the application binaries in prior build steps. The Dockerfile MUST be a clean, minimal runtime container that consumes these pre-compiled build artifacts. Do NOT include heavy SDK/compilation stages or dependency restoration steps inside the Dockerfile.
 
 STRUCTURE & RULES:
-1. Base Image & File Copy:
-   - For `static_frontend`: Use `nginx:alpine` as base image. Remove default NGINX content with `RUN rm -rf /usr/share/nginx/html/*`. Copy pre-built static web assets from `{{ artifact_path }}` directly into NGINX document root `/usr/share/nginx/html/` (use trailing slash, e.g. `COPY {{ artifact_path }}/ /usr/share/nginx/html/` so that `index.html` sits directly inside `/usr/share/nginx/html/index.html`). EXPOSE port 80, and set CMD to `["nginx", "-g", "daemon off;"]`.
+   - For `static_frontend`: Use `nginx:alpine` as base image. Remove default NGINX content with `RUN rm -rf /usr/share/nginx/html/*`. Copy pre-built static web assets from `{{ artifact_path }}` directly into NGINX document root `/usr/share/nginx/html/` (use trailing slash, e.g. `COPY {{ artifact_path }}/ /usr/share/nginx/html/`). EXPOSE port 80, and set CMD to `["nginx", "-g", "daemon off;"]`.
    - For `runtime_service`: Use the recommended runner base image (`{{ analysis.runner_image or 'alpine:latest' }}`). Set WORKDIR to `/app`.
 {% if analysis.build_command or analysis.publish_dir %}
      Copy pre-compiled published build artifacts from `{{ artifact_path }}` into `/app`.

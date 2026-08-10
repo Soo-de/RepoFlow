@@ -90,12 +90,12 @@ Use TWO jobs inside the CI stage:
   1. A "Build" job containing the applicable setup, cache, install, and build steps listed below.
 {% if analysis.publish_dir or analysis.build_command %}
      At the END of the Build job, publish the compiled build output artifact using
-     `PublishBuildArtifacts@1` (publishLocation: 'Container', PathtoPublish: '$(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}', artifactName: 'drop'). NEVER publish the workspace root (`$(Build.SourcesDirectory)` or `.`).
+     `PublishPipelineArtifact@1` (targetPath: '$(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}', artifact: 'drop', publishLocation: 'pipeline'). NEVER publish the workspace root (`$(Build.SourcesDirectory)` or `.`).
 {% endif %}
   2. A "Test" job (dependsOn: Build) containing the applicable setup, cache, install, test, and publish steps listed below.
 {% if analysis.publish_dir or analysis.build_command %}
      At the START of the Test job (after setup/cache/install), download the build artifact using
-     `DownloadBuildArtifacts@1` (buildType: 'current', downloadType: 'single', artifactName: 'drop', downloadPath: '$(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}')
+     `DownloadPipelineArtifact@2` (buildType: 'current', artifact: 'drop', targetPath: '$(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}')
      BEFORE running any test command. Only use `--no-build` or equivalent skip-build flags when
      this download step is present in the same job.
   IMPORTANT: Jobs in Azure Pipelines do NOT share a filesystem. The Build job MUST publish its
@@ -106,7 +106,7 @@ Use TWO jobs inside the CI stage:
 Use a SINGLE job named "Build" containing the applicable setup, cache, install, and build steps listed below. Do NOT include any test steps.
 {% if analysis.publish_dir or analysis.build_command %}
 At the END of the Build job, publish the compiled build output artifact using
-`PublishBuildArtifacts@1` (publishLocation: 'Container', PathtoPublish: '$(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}', artifactName: 'drop'). NEVER publish the workspace root (`$(Build.SourcesDirectory)` or `.`).
+`PublishPipelineArtifact@1` (targetPath: '$(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}', artifact: 'drop', publishLocation: 'pipeline'). NEVER publish the workspace root (`$(Build.SourcesDirectory)` or `.`).
 {% endif %}
 {% elif analysis.test_command %}
 Use a SINGLE job named "Test" containing the applicable setup, cache, install, test, and publish steps listed below.
@@ -197,13 +197,12 @@ Docker stage structure:
       vmImage: 'ubuntu-latest'
     steps:
 {% if analysis.publish_dir or analysis.build_command %}
-    - task: DownloadBuildArtifacts@1
+    - task: DownloadPipelineArtifact@2
       displayName: 'Download build artifact'
       inputs:
         buildType: 'current'
-        downloadType: 'single'
-        artifactName: 'drop'
-        downloadPath: '$(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}'
+        artifact: 'drop'
+        targetPath: '$(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or "dist" }}'
 {% endif %}
     - task: Docker@2
       displayName: 'Build and Push Docker Image'
@@ -216,7 +215,7 @@ Docker stage structure:
           $(Build.BuildId)
           latest
 
-IMPORTANT: The Docker stage uses `task: DownloadBuildArtifacts@1` followed by `task: Docker@2` with `containerRegistry: 'dockerhub-connection'`.
+IMPORTANT: The Docker stage uses `task: DownloadPipelineArtifact@2` followed by `task: Docker@2` with `containerRegistry: 'dockerhub-connection'`.
 
 CRITICAL RULES:
 - Include ONLY steps for which specific commands or tasks are defined above.
@@ -229,9 +228,8 @@ CRITICAL RULES:
 - Do NOT include a top-level `concurrency:` block.
 - Do NOT put hyphens before `branches:` in `trigger:` or `pr:`.
 - Do NOT generate test steps or PublishTestResults unless a Test Command is explicitly provided above.
-- If PublishBuildArtifacts@1 is used, PathtoPublish MUST match the exact Build Output Directory provided above ($(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or 'dist' }}). NEVER publish the workspace root directory ($(Build.SourcesDirectory) or .).
-- The task name for publishing build artifacts MUST be plural `PublishBuildArtifacts@1`. NEVER write singular `PublishBuildArtifact@1`.
-- The Docker stage MUST always be included, MUST depend on the CI stage, and MUST download the build artifact before running Docker@2.
+- If PublishPipelineArtifact@1 is used, targetPath MUST match the exact Build Output Directory provided above ($(Build.SourcesDirectory)/{% if analysis.working_dir %}{{ analysis.working_dir }}/{% endif %}{{ analysis.publish_dir or 'dist' }}). NEVER publish the workspace root directory ($(Build.SourcesDirectory) or .).
+- The Docker stage MUST always be included, MUST depend on the CI stage, and MUST download the build artifact using DownloadPipelineArtifact@2 before running Docker@2.
 - Every step must have a clear `displayName`.
 - Keep the YAML clean, minimal, and production-ready.
 
