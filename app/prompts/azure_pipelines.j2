@@ -23,6 +23,9 @@ Generate a production-ready azure-pipelines.yml CI pipeline based on the followi
 {% if analysis.build_command %}
 - Build Command: {{ analysis.build_command }}
 {% endif %}
+{% if analysis.publish_command %}
+- Publish Command: {{ analysis.publish_command }}
+{% endif %}
 {% if analysis.publish_dir %}
 - Build Output Directory: {{ analysis.publish_dir }}
 {% endif %}
@@ -164,14 +167,22 @@ d. Build using a simple `- script:` step:
 {% endif %}
      displayName: 'Build'
 {% endif %}
+{% if analysis.publish_command %}
+e. Publish using a simple `- script:` step:
+   - script: {{ analysis.publish_command }}
+{% if analysis.working_dir %}
+     workingDirectory: {{ analysis.working_dir }}
+{% endif %}
+     displayName: 'Publish'
+{% endif %}
 {% if analysis.test_command %}
-e. Run tests using a simple `- script:` step:
+f. Run tests using a simple `- script:` step:
    - script: {{ analysis.test_command }}
 {% if analysis.working_dir %}
      workingDirectory: {{ analysis.working_dir }}
 {% endif %}
      displayName: 'Run tests'
-f. Publish test results using `PublishTestResults@2` with:
+g. Publish test results using `PublishTestResults@2` with:
    - `testResultsFormat`: matching the framework test format (e.g. `'JUnit'`, `'VSTest'`, etc.)
    - `testResultsFiles`: matching the generated test result files pattern
    - `condition: succeededOrFailed()` at the STEP level (outside inputs)
