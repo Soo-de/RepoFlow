@@ -11,6 +11,7 @@ Generate a production-ready .github/workflows/ci.yml GitHub Actions pipeline bas
 {% if analysis.working_dir %}- Working Directory: {{ analysis.working_dir }}{% endif %}
 {% if analysis.install_command %}- Install Command: {{ analysis.install_command }}{% endif %}
 {% if analysis.build_command %}- Build Command: {{ analysis.build_command }}{% endif %}
+{% if analysis.publish_command %}- Publish Command: {{ analysis.publish_command }}{% endif %}
 {% if analysis.publish_dir %}- Build Output Directory: {{ analysis.publish_dir }}{% endif %}
 {% if analysis.test_framework %}- Test Framework: {{ analysis.test_framework }}{% endif %}
 {% if analysis.test_command %}
@@ -90,8 +91,9 @@ a. Checkout using `actions/checkout@v4`.
 {% if setup and setup.task_or_action %}b. Set up the {{ analysis.primary_language }} runtime using `{{ setup.task_or_action }}`{% if analysis.runtime_version %} with `with: {{ setup.version_key }}: '{{ analysis.runtime_version }}'`{% endif %}{% if setup.extra_inputs %}{% for k, v in setup.extra_inputs.items() %}, `{{ k }}: '{{ v }}'`{% endfor %}{% endif %}.{% if analysis.cache_key_files %} Enable native setup action dependency caching (e.g. `cache: 'npm'`, `cache: 'maven'`, `cache: 'gradle'`, or `cache: 'pip'`). The cache key MUST use files that change when dependency versions change: {{ analysis.cache_key_files | join(', ') }}. NEVER use a project-list or workspace file (e.g. .sln, .slnx) as a cache key source.{% endif %}{% endif %}
 {% if analysis.install_command %}c. Install dependencies: `{{ analysis.install_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
 {% if analysis.build_command %}d. Build: `{{ analysis.build_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
-{% if analysis.test_command %}e. Run tests: `{{ analysis.test_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}.
-f. Upload test results artifact using `actions/upload-artifact@v4` with `if: always()`.{% endif %}
+{% if analysis.publish_command %}e. Publish artifacts: `{{ analysis.publish_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}{% endif %}
+{% if analysis.test_command %}f. Run tests: `{{ analysis.test_command }}`{% if analysis.working_dir %} (with `working-directory: {{ analysis.working_dir }}`){% endif %}.
+g. Upload test results artifact using `actions/upload-artifact@v4` with `if: always()`.{% endif %}
 {% if analysis.services_needed %}g. Declare required services ({{ analysis.services_needed | join(', ') }}) under the job's `services:` key with appropriate health checks.{% endif %}
 
 DOCKER BUILD & PUSH:
